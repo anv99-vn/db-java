@@ -83,14 +83,23 @@ public class SelectQuery implements Query {
             whereColType = schema.get(condition.getColumnName());
         }
 
-        for (int blockId : table.getListBlock()) {
+        int blockId = table.getFirstBlock();
+        while (blockId != -1) {
+            final int[] nextBlockId = {-1};
             Block block = blocksStorage.getBlock(blockId, bytes -> {
+                ByteBuffer headerBuffer = ByteBuffer.wrap(bytes);
+                headerBuffer.getInt(); // skip current block size
+                nextBlockId[0] = headerBuffer.getInt();
             });
+            
+            if (block == null) break;
+            
             ByteBuffer buffer = ByteBuffer.wrap(block.bytes);
             int blockSize = buffer.getInt(); // Read total size of data in block
-
-            int currentPos = 4; // Start after the size header
-            while (currentPos < 4 + blockSize) {
+            // skip nextBlockId at index 4
+            
+            int currentPos = 8; // Start after the 8-byte header
+            while (currentPos < 8 + blockSize) {
                 buffer.position(currentPos);
                 List<Object> record = new ArrayList<>();
                 for (Map.Entry<String, DataType> entry : schema.entrySet()) {
@@ -113,6 +122,7 @@ public class SelectQuery implements Query {
                 
                 currentPos = buffer.position();
             }
+            blockId = nextBlockId[0];
         }
     }
 

@@ -39,9 +39,6 @@ class CreateTableQueryTest {
         Assertions.assertNotNull(table.getPrimaryKey());
         Assertions.assertEquals("pid", table.getPrimaryKey().getName());
         Assertions.assertEquals(DataType.INT, table.getPrimaryKey().getType());
-
-        Assertions.assertNotNull(table.getListBlock());
-        Assertions.assertEquals(1, table.getListBlock().size());
     }
 
     @Test

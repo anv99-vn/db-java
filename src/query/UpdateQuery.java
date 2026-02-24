@@ -72,16 +72,21 @@ public class UpdateQuery implements Query {
             whereColType = null;
         }
 
-        for (int blockId : table.getListBlock()) {
+        int blockId = table.getFirstBlock();
+        while (blockId != -1) {
             int finalWhereColIndex = whereColIndex;
             DataType finalWhereColType = whereColType;
+            final int[] nextBlockId = {-1};
+            
             blocksStorage.updateBlock(blockId, bytes -> {
                 ByteBuffer buffer = ByteBuffer.wrap(bytes);
                 int blockSize = buffer.getInt();
+                nextBlockId[0] = buffer.getInt();
+                
                 if (blockSize == 0) return;
-
-                int currentPos = 4;
-                while (currentPos < 4 + blockSize) {
+ 
+                int currentPos = 8; // Header is now 8 bytes
+                while (currentPos < 8 + blockSize) {
                     buffer.position(currentPos);
                     List<Object> record = new ArrayList<>();
                     int recordStartByte = currentPos;
@@ -101,7 +106,7 @@ public class UpdateQuery implements Query {
                     }
                     int recordEndByte = buffer.position();
                     currentPos = recordEndByte;
-
+ 
                     if (condition == null || condition.evaluate(record, finalWhereColIndex, finalWhereColType)) {
                         // Apply updates to the record in-place in the bytes array
                         buffer.position(recordStartByte);
@@ -141,6 +146,7 @@ public class UpdateQuery implements Query {
                     }
                 }
             });
+            blockId = nextBlockId[0];
         }
     }
 

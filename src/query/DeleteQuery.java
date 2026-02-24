@@ -1,6 +1,5 @@
 package query;
 
-import storage.Block;
 import storage.BlocksStorage;
 import table.DataType;
 import table.Table;
@@ -11,10 +10,11 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class DeleteQuery implements Query {
     public String tableName;
-    
+
     // Condition parts
     private Condition condition;
 
@@ -27,7 +27,7 @@ public class DeleteQuery implements Query {
 
         String rest = trimmedQuery.substring(11).trim();
         int whereIndex = rest.toUpperCase().indexOf("WHERE");
-        
+
         if (whereIndex != -1) {
             this.tableName = rest.substring(0, whereIndex).trim();
             String whereClause = rest.substring(whereIndex + 5).trim();
@@ -49,7 +49,7 @@ public class DeleteQuery implements Query {
         LinkedHashMap<String, DataType> schema = table.getColumn();
         BlocksStorage blocksStorage = BlocksStorage.getInstance();
         List<String> schemaKeys = new ArrayList<>(schema.keySet());
-        
+
         int whereColIndex;
         DataType whereColType;
         if (condition != null) {
@@ -68,17 +68,21 @@ public class DeleteQuery implements Query {
         // Calculate fixed record size
         int recordSize = table.getColumnSizes().values().stream().mapToInt(size -> size).sum();
 
-        for (int blockId : table.getListBlock()) {
+        int blockId = table.getFirstBlock();
+        while (true) {
+            if (blockId == -1) break;
+            AtomicInteger nextBlockId = new AtomicInteger(-1);
             blocksStorage.updateBlock(blockId, bytes -> {
                 ByteBuffer buffer = ByteBuffer.wrap(bytes);
                 int blockSize = buffer.getInt();
+                nextBlockId.set(buffer.getInt());
                 if (blockSize == 0) return;
 
-                int currentPos = 4;
-                while (currentPos < 4 + blockSize) {
+                int currentPos = 8;
+                while (currentPos < 8 + blockSize) {
                     buffer.position(currentPos);
                     List<Object> record = new ArrayList<>();
-                    
+
                     for (Map.Entry<String, DataType> entry : schema.entrySet()) {
                         DataType type = entry.getValue();
                         switch (type) {
@@ -95,8 +99,8 @@ public class DeleteQuery implements Query {
 
                     if (condition == null || condition.evaluate(record, whereColIndex, whereColType)) {
                         // lấy record cuối block thay thế vào record bị xoá
-                        int lastRecordPos = 4 + blockSize - recordSize;
-                        
+                        int lastRecordPos = 8 + blockSize - recordSize;
+
                         if (currentPos != lastRecordPos) {
                             // Copy last record to current position
                             System.arraycopy(bytes, lastRecordPos, bytes, currentPos, recordSize);
@@ -109,10 +113,9 @@ public class DeleteQuery implements Query {
                 }
                 buffer.putInt(0, blockSize);
             });
+            if (nextBlockId.get() == -1) break;
+            blockId = nextBlockId.get();
         }
-        // Note: Currently we don't remove completely empty blocks from table.getListBlock() 
-        // to avoid complexity with block allocation, but the data is effectively gone.
-    }
 
-    // Condition logic moved to Condition.java
+    }
 }

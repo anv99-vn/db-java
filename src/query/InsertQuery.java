@@ -2,7 +2,9 @@ package query;
 
 import storage.Block;
 import storage.BlocksStorage;
+import table.BKey;
 import table.DataType;
+import table.Index;
 import table.Table;
 
 import java.io.IOException;
@@ -10,6 +12,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static storage.BlocksStorage.BLOCK_SIZE;
 
@@ -96,26 +99,75 @@ public class InsertQuery implements Query {
 
         int lastBlockId = table.getLastBlock();
         BlocksStorage blocksStorage = BlocksStorage.getInstance();
-        java.util.concurrent.atomic.AtomicBoolean inserted = new java.util.concurrent.atomic.AtomicBoolean(false);
+        AtomicInteger insertedPos = new AtomicInteger(-1);
 
         blocksStorage.updateBlock(lastBlockId, bytes -> {
             ByteBuffer buffer = ByteBuffer.wrap(bytes);
             int blockSize = buffer.getInt();
-            if (blockSize + recordData.length + 4 <= BLOCK_SIZE) {
-                System.arraycopy(recordData, 0, bytes, 4 + blockSize, recordData.length);
+            buffer.getInt(); // skip nextBlockId
+            if (blockSize + recordData.length + 8 <= BLOCK_SIZE) {
+                int pos = 8 + blockSize;
+                System.arraycopy(recordData, 0, bytes, pos, recordData.length);
                 buffer.putInt(0, blockSize + recordData.length);
-                inserted.set(true);
+                insertedPos.set(pos);
             }
         });
 
-        if (!inserted.get()) {
+        int finalBlockId;
+        int finalOffset;
+
+        if (insertedPos.get() != -1) {
+            finalBlockId = lastBlockId;
+            finalOffset = insertedPos.get();
+        } else {
             ByteBuffer newBlockBuffer = ByteBuffer.allocate(BLOCK_SIZE);
             newBlockBuffer.putInt(recordData.length);
+            newBlockBuffer.putInt(-1); // nextBlockId = -1
             newBlockBuffer.put(recordData);
-            int blockID = blocksStorage.allocateAndWrite(new Block(newBlockBuffer.array()));
-            table.getListBlock().add(blockID);
+            
+            finalBlockId = blocksStorage.allocateAndWrite(new Block(newBlockBuffer.array()));
+            
+            // Link old last block to new block
+            if (lastBlockId != -1) {
+                blocksStorage.updateBlock(lastBlockId, bytes -> {
+                    ByteBuffer buffer = ByteBuffer.wrap(bytes);
+                    buffer.putInt(4, finalBlockId); // index 4 is nextBlockId
+                });
+            }
+            
+            table.setLastBlock(finalBlockId);
+            finalOffset = 8; // Header is now 8 bytes (4 size + 4 nextBlockId)
         }
 
+        // Update indexes
+        if (!table.getIndexes().isEmpty()) {
+            updateIndexes(table, finalBlockId, finalOffset);
+        }
     }
 
+    private void updateIndexes(Table table, int blockId, int offset) {
+        long pointer = ((long) blockId << 32) | (long) offset;
+        Map<String, DataType> schema = table.getColumn();
+        ArrayList<String> schemaKeys = new ArrayList<>(schema.keySet());
+
+        for (Index index : table.getIndexes().values()) {
+            String colName = index.getColumnName();
+            int colIndex = schemaKeys.indexOf(colName);
+            String valueStr = this.insertParams.get(colIndex);
+            DataType type = schema.get(colName);
+
+            insertIntoIndex(index, valueStr, pointer, type);
+        }
+    }
+
+    private void insertIntoIndex(Index index, String valueStr, long pointer, DataType type) {
+        switch (type) {
+            case INT ->
+                    index.<Integer>getBTree().insert(new BKey<>(Integer.valueOf(valueStr)), pointer);
+            case FLOAT ->
+                    index.<Float>getBTree().insert(new BKey<>(Float.valueOf(valueStr)), pointer);
+            case STRING -> index.<String>getBTree().insert(new BKey<>(valueStr), pointer);
+            default -> throw new IllegalArgumentException("Unsupported type");
+        }
+    }
 }

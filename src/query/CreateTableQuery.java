@@ -102,6 +102,6 @@ public class CreateTableQuery implements Query {
         // Allocate initial block
         Block initialBlock = new Block();
         int blockId = storage.BlocksStorage.getInstance().allocateAndWrite(initialBlock);
-        table.getListBlock().add(blockId);
+        table.setLastBlock(blockId);
     }
 }
