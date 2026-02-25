@@ -1,3 +1,5 @@
+package table;
+
 import java.util.Arrays;
 
 public enum DataTypeEnum {
