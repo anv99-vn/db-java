@@ -1,0 +1,5 @@
+*.bin
+/out/
+/db-java.iml
+/identifier.sqlite
+/.idea/
