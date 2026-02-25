@@ -24,11 +24,12 @@ class BlockTest {
     void testBlockFromBytes() {
         byte[] data = new byte[BlocksStorage.BLOCK_SIZE];
         ByteBuffer buffer = ByteBuffer.wrap(data);
-        buffer.putInt(42); // Size
-        buffer.put("Hello".getBytes());
+        buffer.putInt(Block.OFFSET_SIZE, 42); // Size
+        buffer.putInt(Block.OFFSET_NEXT_BLOCK, 100); // nextBlockId
         
         Block block = new Block(data);
         assertEquals(42, block.getSize());
+        assertEquals(100, block.getNextBlockId());
         assertEquals(data, block.bytes);
     }
 
@@ -45,11 +46,12 @@ class BlockTest {
         assertEquals(data.length, block.getSize(), "Size should update after insert");
         
         // Verify header size
-        assertEquals(data.length, ByteBuffer.wrap(block.bytes).getInt(), "Header size should match");
+        assertEquals(data.length, ByteBuffer.wrap(block.bytes).getInt(Block.OFFSET_SIZE), "Header size should match");
+        assertEquals(-1, ByteBuffer.wrap(block.bytes).getInt(Block.OFFSET_NEXT_BLOCK), "Default nextBlockId should be -1");
         
         // Verify content
         byte[] content = new byte[data.length];
-        System.arraycopy(block.bytes, 4, content, 0, data.length);
+        System.arraycopy(block.bytes, Block.HEADER_TOTAL_SIZE, content, 0, data.length);
         assertArrayEquals(data, content, "Content should match inserted data");
     }
 
@@ -75,10 +77,11 @@ class BlockTest {
         byte[] expectedData = expectedText.getBytes();
         
         assertEquals(expectedData.length, block.getSize(), "Size should include both insertions");
-        assertEquals(expectedData.length, ByteBuffer.wrap(block.bytes).getInt(), "Header size should match total length");
+        assertEquals(expectedData.length, ByteBuffer.wrap(block.bytes).getInt(Block.OFFSET_SIZE), "Header size should match total length");
+        assertEquals(-1, ByteBuffer.wrap(block.bytes).getInt(Block.OFFSET_NEXT_BLOCK), "nextBlockId should still be -1");
         
         byte[] content = new byte[expectedData.length];
-        System.arraycopy(block.bytes, 4, content, 0, expectedData.length);
+        System.arraycopy(block.bytes, Block.HEADER_TOTAL_SIZE, content, 0, expectedData.length);
         assertArrayEquals(expectedData, content, "Content should match concatenated data");
     }
 }
