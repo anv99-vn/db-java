@@ -1,9 +1,5 @@
 package table;
 
-import query.InsertQuery;
-
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -16,7 +12,14 @@ public class Table {
     LinkedHashMap<String, DataType> column;
     LinkedHashMap<String, Integer> columnSizes;
     PrimaryKey primaryKey;
-    ArrayList<Integer> listBlock;
+    Map<String, Index> indexes = new LinkedHashMap<>();
+    private int lastBlock = -1;
+    private int firstBlock = -1;
+
+    public Map<String, Index> getIndexes() {
+        return indexes;
+    }
+
 
     public LinkedHashMap<String, DataType> getColumn() {
         return column;
@@ -30,12 +33,9 @@ public class Table {
         return primaryKey;
     }
 
-    public ArrayList<Integer> getListBlock() {
-        return listBlock;
-    }
 
     public int getLastBlock() {
-        return listBlock.get(listBlock.size() - 1);
+        return lastBlock;
     }
 
     public void addColumn(String name, DataType type, int size) {
@@ -52,8 +52,21 @@ public class Table {
     }
 
     public void init() {
-        if (listBlock == null) {
-            listBlock = new ArrayList<>();
+
+    }
+
+    public void setLastBlock(int id) {
+        lastBlock = id;
+        if (firstBlock == -1) {
+            setFirstBlock(id);
         }
+    }
+
+    private void setFirstBlock(int id) {
+        firstBlock = id;
+    }
+
+    public int getFirstBlock() {
+        return firstBlock;
     }
 }

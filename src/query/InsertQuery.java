@@ -2,7 +2,6 @@ package query;
 
 import storage.Block;
 import storage.BlocksStorage;
-import table.BKey;
 import table.DataType;
 import table.Index;
 import table.Table;
@@ -14,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static storage.Block.HEADER_TOTAL_SIZE;
 import static storage.BlocksStorage.BLOCK_SIZE;
 
 public class InsertQuery implements Query {
@@ -105,8 +105,8 @@ public class InsertQuery implements Query {
             ByteBuffer buffer = ByteBuffer.wrap(bytes);
             int blockSize = buffer.getInt();
             buffer.getInt(); // skip nextBlockId
-            if (blockSize + recordData.length + 8 <= BLOCK_SIZE) {
-                int pos = 8 + blockSize;
+            if (blockSize + recordData.length + HEADER_TOTAL_SIZE <= BLOCK_SIZE) {
+                int pos = HEADER_TOTAL_SIZE + blockSize;
                 System.arraycopy(recordData, 0, bytes, pos, recordData.length);
                 buffer.putInt(0, blockSize + recordData.length);
                 insertedPos.set(pos);
@@ -131,12 +131,12 @@ public class InsertQuery implements Query {
             if (lastBlockId != -1) {
                 blocksStorage.updateBlock(lastBlockId, bytes -> {
                     ByteBuffer buffer = ByteBuffer.wrap(bytes);
-                    buffer.putInt(4, finalBlockId); // index 4 is nextBlockId
+                    buffer.putInt(Block.OFFSET_NEXT_BLOCK, finalBlockId); // index 4 is nextBlockId
                 });
             }
             
             table.setLastBlock(finalBlockId);
-            finalOffset = 8; // Header is now 8 bytes (4 size + 4 nextBlockId)
+            finalOffset = HEADER_TOTAL_SIZE; // Header is now 8 bytes (4 size + 4 nextBlockId)
         }
 
         // Update indexes
@@ -146,28 +146,10 @@ public class InsertQuery implements Query {
     }
 
     private void updateIndexes(Table table, int blockId, int offset) {
-        long pointer = ((long) blockId << 32) | (long) offset;
-        Map<String, DataType> schema = table.getColumn();
-        ArrayList<String> schemaKeys = new ArrayList<>(schema.keySet());
 
-        for (Index index : table.getIndexes().values()) {
-            String colName = index.getColumnName();
-            int colIndex = schemaKeys.indexOf(colName);
-            String valueStr = this.insertParams.get(colIndex);
-            DataType type = schema.get(colName);
-
-            insertIntoIndex(index, valueStr, pointer, type);
-        }
     }
 
     private void insertIntoIndex(Index index, String valueStr, long pointer, DataType type) {
-        switch (type) {
-            case INT ->
-                    index.<Integer>getBTree().insert(new BKey<>(Integer.valueOf(valueStr)), pointer);
-            case FLOAT ->
-                    index.<Float>getBTree().insert(new BKey<>(Float.valueOf(valueStr)), pointer);
-            case STRING -> index.<String>getBTree().insert(new BKey<>(valueStr), pointer);
-            default -> throw new IllegalArgumentException("Unsupported type");
-        }
+
     }
 }

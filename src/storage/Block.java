@@ -9,9 +9,9 @@ public class Block {
     public byte[] bytes;
 
     // Định nghĩa các hằng số để dễ quản lý header
-    private static final int OFFSET_SIZE = 0;
-    private static final int OFFSET_NEXT_BLOCK = 4;
-    private static final int HEADER_TOTAL_SIZE = 8; // 4 (size) + 4 (nextBlockId)
+    static final int OFFSET_SIZE = 0;
+    public static final int OFFSET_NEXT_BLOCK = 4;
+    public static final int HEADER_TOTAL_SIZE = 8; // 4 (size) + 4 (nextBlockId)
 
     public Block() {
         this.bytes = new byte[BlocksStorage.BLOCK_SIZE];
