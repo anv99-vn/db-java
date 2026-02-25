@@ -37,8 +37,8 @@ public class BlocksStorage {
     // Thuộc tính mới: Cache kích thước file để tránh gọi fileChannel.size() liên tục
     private final AtomicLong currentFileSize = new AtomicLong(0);
 
-    private final ConcurrentHashMap<Integer, ReentrantReadWriteLock> blockLocks =
-            new ConcurrentHashMap<>();
+    private static final int STRIPE_COUNT = 1024; // Số lượng lock cố định để tránh leak memory
+    private final ReentrantReadWriteLock[] blockLocks = new ReentrantReadWriteLock[STRIPE_COUNT];
 
     private final Map<Integer, byte[]> blockCache;
 
@@ -59,6 +59,10 @@ public class BlocksStorage {
         // Khởi tạo kích thước file hiện tại
         this.currentFileSize.set(fileChannel.size());
 
+        for (int i = 0; i < STRIPE_COUNT; i++) {
+            this.blockLocks[i] = new ReentrantReadWriteLock();
+        }
+
         this.blockCache = Collections.synchronizedMap(
                 new LinkedHashMap<>(cacheCapacity, 0.75f, true) {
                     @Override
@@ -70,7 +74,7 @@ public class BlocksStorage {
     }
 
     private ReentrantReadWriteLock lockForBlock(int id) {
-        return blockLocks.computeIfAbsent(id, k -> new ReentrantReadWriteLock());
+        return blockLocks[Math.abs(id % STRIPE_COUNT)];
     }
 
     /**
@@ -146,17 +150,22 @@ public class BlocksStorage {
     }
 
     public void putBlock(int id, Block block) throws IOException {
-        ReentrantReadWriteLock lock = lockForBlock(id);
-        lock.writeLock().lock();
+        fileLock.readLock().lock();
         try {
-            writeBlockToChannel(id, block);
-            blockCache.put(id, Arrays.copyOf(block.bytes, block.bytes.length));
-            
-            // Cập nhật currentFileSize nếu ghi vào vị trí mới
-            long endOffset = (long) (id + 1) * BLOCK_SIZE;
-            currentFileSize.accumulateAndGet(endOffset, Math::max);
+            ReentrantReadWriteLock lock = lockForBlock(id);
+            lock.writeLock().lock();
+            try {
+                writeBlockToChannel(id, block);
+                blockCache.put(id, Arrays.copyOf(block.bytes, block.bytes.length));
+                
+                // Cập nhật currentFileSize nếu ghi vào vị trí mới
+                long endOffset = (long) (id + 1) * BLOCK_SIZE;
+                currentFileSize.accumulateAndGet(endOffset, Math::max);
+            } finally {
+                lock.writeLock().unlock();
+            }
         } finally {
-            lock.writeLock().unlock();
+            fileLock.readLock().unlock();
         }
     }
 
@@ -172,10 +181,12 @@ public class BlocksStorage {
     }
 
     public int allocateAndWrite(Block block) throws IOException {
-        fileLock.writeLock().lock();
+        fileLock.readLock().lock();
         try {
-            // Sử dụng currentFileSize để tính ID mới
-            int newId = (int) (currentFileSize.get() / BLOCK_SIZE);
+            // Sử dụng AtomicLong.getAndAdd để đặt vị trí (offset) mới mà không cần lock toàn bộ file.
+            // Trả về offset cũ và tăng kích thước file lên BLOCK_SIZE.
+            long oldFileSize = currentFileSize.getAndAdd(BLOCK_SIZE);
+            int newId = (int) (oldFileSize / BLOCK_SIZE);
 
             ReentrantReadWriteLock blockLock = lockForBlock(newId);
             blockLock.writeLock().lock();
@@ -183,16 +194,13 @@ public class BlocksStorage {
                 block.id = newId;
                 writeBlockToChannel(newId, block);
                 blockCache.put(newId, Arrays.copyOf(block.bytes, block.bytes.length));
-                
-                // Cập nhật kích thước file mới vào AtomicLong
-                currentFileSize.addAndGet(BLOCK_SIZE);
             } finally {
                 blockLock.writeLock().unlock();
             }
 
             return newId;
         } finally {
-            fileLock.writeLock().unlock();
+            fileLock.readLock().unlock();
         }
     }
 
