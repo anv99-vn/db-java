@@ -88,18 +88,18 @@ public class SelectQuery implements Query {
             final int[] nextBlockId = {-1};
             Block block = blocksStorage.getBlock(blockId, bytes -> {
                 ByteBuffer headerBuffer = ByteBuffer.wrap(bytes);
-                headerBuffer.getInt(); // skip current block size
-                nextBlockId[0] = headerBuffer.getInt();
+                headerBuffer.getInt(Block.OFFSET_SIZE); // read current block size
+                nextBlockId[0] = headerBuffer.getInt(Block.OFFSET_NEXT_BLOCK);
+                // checksum at OFFSET_CHECKSUM is ignored here
             });
             
             if (block == null) break;
             
             ByteBuffer buffer = ByteBuffer.wrap(block.bytes);
-            int blockSize = buffer.getInt(); // Read total size of data in block
-            // skip nextBlockId at index 4
-            
-            int currentPos = 8; // Start after the 8-byte header
-            while (currentPos < 8 + blockSize) {
+            int blockSize = buffer.getInt(Block.OFFSET_SIZE); // Read total size of data in block
+
+            int currentPos = Block.HEADER_TOTAL_SIZE; // Start after the full header (size + next + checksum)
+            while (currentPos < Block.HEADER_TOTAL_SIZE + blockSize) {
                 buffer.position(currentPos);
                 List<Object> record = new ArrayList<>();
                 for (Map.Entry<String, DataType> entry : schema.entrySet()) {

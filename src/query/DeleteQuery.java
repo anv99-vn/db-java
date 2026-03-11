@@ -1,6 +1,7 @@
 package query;
 
 import storage.BlocksStorage;
+import storage.Block;
 import table.DataType;
 import table.Table;
 
@@ -74,12 +75,12 @@ public class DeleteQuery implements Query {
             AtomicInteger nextBlockId = new AtomicInteger(-1);
             blocksStorage.updateBlock(blockId, bytes -> {
                 ByteBuffer buffer = ByteBuffer.wrap(bytes);
-                int blockSize = buffer.getInt();
-                nextBlockId.set(buffer.getInt());
+                int blockSize = buffer.getInt(Block.OFFSET_SIZE);
+                nextBlockId.set(buffer.getInt(Block.OFFSET_NEXT_BLOCK));
                 if (blockSize == 0) return;
 
-                int currentPos = 8;
-                while (currentPos < 8 + blockSize) {
+                int currentPos = Block.HEADER_TOTAL_SIZE;
+                while (currentPos < Block.HEADER_TOTAL_SIZE + blockSize) {
                     buffer.position(currentPos);
                     List<Object> record = new ArrayList<>();
 
@@ -99,7 +100,7 @@ public class DeleteQuery implements Query {
 
                     if (condition == null || condition.evaluate(record, whereColIndex, whereColType)) {
                         // lấy record cuối block thay thế vào record bị xoá
-                        int lastRecordPos = 8 + blockSize - recordSize;
+                        int lastRecordPos = Block.HEADER_TOTAL_SIZE + blockSize - recordSize;
 
                         if (currentPos != lastRecordPos) {
                             // Copy last record to current position
@@ -111,7 +112,7 @@ public class DeleteQuery implements Query {
                         currentPos += recordSize;
                     }
                 }
-                buffer.putInt(0, blockSize);
+                buffer.putInt(Block.OFFSET_SIZE, blockSize);
             });
             if (nextBlockId.get() == -1) break;
             blockId = nextBlockId.get();

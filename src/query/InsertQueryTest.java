@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 import storage.BlocksStorage;
+import storage.Block;
 import table.DataType;
 import table.Table;
 
@@ -11,6 +12,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.zip.CRC32;
 
 class InsertQueryTest {
 
@@ -97,6 +99,11 @@ class InsertQueryTest {
                 int sizeInHeader = buffer.getInt();
                 // 4 (INT) + 20 (STRING) = 24 bytes per record
                 Assertions.assertEquals(24, sizeInHeader, "Block size in header should match record size");
+                // verify checksum
+                int headerChecksum = buffer.getInt(Block.OFFSET_CHECKSUM);
+                CRC32 crc = new CRC32();
+                crc.update(bytes, Block.HEADER_TOTAL_SIZE, sizeInHeader);
+                Assertions.assertEquals((int) crc.getValue(), headerChecksum, "Checksum should match payload");
             });
 
             // Insert another one
@@ -107,6 +114,10 @@ class InsertQueryTest {
                 ByteBuffer buffer = ByteBuffer.wrap(bytes);
                 int sizeInHeader = buffer.getInt();
                 Assertions.assertEquals(48, sizeInHeader, "Block size should double after second insert");
+                int headerChecksum = buffer.getInt(Block.OFFSET_CHECKSUM);
+                CRC32 crc = new CRC32();
+                crc.update(bytes, Block.HEADER_TOTAL_SIZE, sizeInHeader);
+                Assertions.assertEquals((int) crc.getValue(), headerChecksum, "Checksum should match payload after second insert");
             });
         } finally {
             storage.clearCache();

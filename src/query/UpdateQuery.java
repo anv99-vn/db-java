@@ -80,13 +80,13 @@ public class UpdateQuery implements Query {
             
             blocksStorage.updateBlock(blockId, bytes -> {
                 ByteBuffer buffer = ByteBuffer.wrap(bytes);
-                int blockSize = buffer.getInt();
-                nextBlockId[0] = buffer.getInt();
+                int blockSize = buffer.getInt(Block.OFFSET_SIZE);
+                nextBlockId[0] = buffer.getInt(Block.OFFSET_NEXT_BLOCK);
                 
                 if (blockSize == 0) return;
  
-                int currentPos = 8; // Header is now 8 bytes
-                while (currentPos < 8 + blockSize) {
+                int currentPos = Block.HEADER_TOTAL_SIZE;
+                while (currentPos < Block.HEADER_TOTAL_SIZE + blockSize) {
                     buffer.position(currentPos);
                     List<Object> record = new ArrayList<>();
                     int recordStartByte = currentPos;

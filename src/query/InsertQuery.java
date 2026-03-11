@@ -101,17 +101,19 @@ public class InsertQuery implements Query {
         BlocksStorage blocksStorage = BlocksStorage.getInstance();
         AtomicInteger insertedPos = new AtomicInteger(-1);
 
-        blocksStorage.updateBlock(lastBlockId, bytes -> {
-            ByteBuffer buffer = ByteBuffer.wrap(bytes);
-            int blockSize = buffer.getInt();
-            buffer.getInt(); // skip nextBlockId
-            if (blockSize + recordData.length + HEADER_TOTAL_SIZE <= BLOCK_SIZE) {
-                int pos = HEADER_TOTAL_SIZE + blockSize;
-                System.arraycopy(recordData, 0, bytes, pos, recordData.length);
-                buffer.putInt(0, blockSize + recordData.length);
-                insertedPos.set(pos);
-            }
-        });
+        if (lastBlockId != -1) {
+            blocksStorage.updateBlock(lastBlockId, bytes -> {
+                ByteBuffer buffer = ByteBuffer.wrap(bytes);
+                int blockSize = buffer.getInt(Block.OFFSET_SIZE);
+                buffer.getInt(Block.OFFSET_NEXT_BLOCK); // read nextBlockId
+                if (blockSize + recordData.length + HEADER_TOTAL_SIZE <= BLOCK_SIZE) {
+                    int pos = HEADER_TOTAL_SIZE + blockSize;
+                    System.arraycopy(recordData, 0, bytes, pos, recordData.length);
+                    buffer.putInt(Block.OFFSET_SIZE, blockSize + recordData.length);
+                    insertedPos.set(pos);
+                }
+            });
+        }
 
         int finalBlockId;
         int finalOffset;
@@ -121,8 +123,10 @@ public class InsertQuery implements Query {
             finalOffset = insertedPos.get();
         } else {
             ByteBuffer newBlockBuffer = ByteBuffer.allocate(BLOCK_SIZE);
-            newBlockBuffer.putInt(recordData.length);
-            newBlockBuffer.putInt(-1); // nextBlockId = -1
+            newBlockBuffer.putInt(Block.OFFSET_SIZE, recordData.length);
+            newBlockBuffer.putInt(Block.OFFSET_NEXT_BLOCK, -1); // nextBlockId = -1
+            // Ensure payload starts at HEADER_TOTAL_SIZE (accounts for checksum)
+            newBlockBuffer.position(Block.HEADER_TOTAL_SIZE);
             newBlockBuffer.put(recordData);
             
             finalBlockId = blocksStorage.allocateAndWrite(new Block(newBlockBuffer.array()));
@@ -136,7 +140,7 @@ public class InsertQuery implements Query {
             }
             
             table.setLastBlock(finalBlockId);
-            finalOffset = HEADER_TOTAL_SIZE; // Header is now 8 bytes (4 size + 4 nextBlockId)
+            finalOffset = HEADER_TOTAL_SIZE; // Header includes checksum (size + nextBlockId + checksum)
         }
 
         // Update indexes

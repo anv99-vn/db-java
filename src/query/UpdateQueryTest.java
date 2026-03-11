@@ -3,11 +3,14 @@ package query;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import storage.BlocksStorage;
+import storage.Block;
 import table.Table;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
+import java.nio.ByteBuffer;
+import java.util.zip.CRC32;
 
 class UpdateQueryTest {
 
@@ -48,6 +51,9 @@ class UpdateQueryTest {
         
         Assertions.assertEquals(1, select.getResults().size());
         Assertions.assertEquals(99.9f, (float) select.getResults().get(0).get(2), 0.001);
+
+        // verify checksums
+        validateAllBlockChecksums();
     }
 
     @Test
@@ -65,6 +71,8 @@ class UpdateQueryTest {
         List<Object> result = select.getResults().get(0);
         Assertions.assertEquals("Bobby", result.get(1));
         Assertions.assertEquals(22.2f, (float) result.get(2), 0.001);
+
+        validateAllBlockChecksums();
     }
 
     @Test
@@ -84,6 +92,8 @@ class UpdateQueryTest {
         for (List<Object> row : results) {
             Assertions.assertEquals(0.0f, row.get(2));
         }
+
+        validateAllBlockChecksums();
     }
 
     @Test
@@ -100,6 +110,8 @@ class UpdateQueryTest {
         select.run(table);
         
         Assertions.assertEquals("Short", select.getResults().get(0).get(1));
+
+        validateAllBlockChecksums();
     }
 
     @Test
@@ -115,5 +127,22 @@ class UpdateQueryTest {
         select.run(table);
         
         Assertions.assertTrue(select.getResults().isEmpty());
+
+        validateAllBlockChecksums();
+    }
+
+    private void validateAllBlockChecksums() throws IOException {
+        BlocksStorage storage = BlocksStorage.getInstance();
+        int total = storage.getTotalBlockCount();
+        for (int id = 0; id < total; id++) {
+            storage.getBlock(id, bytes -> {
+                ByteBuffer buf = ByteBuffer.wrap(bytes);
+                int size = buf.getInt(Block.OFFSET_SIZE);
+                int headerChecksum = buf.getInt(Block.OFFSET_CHECKSUM);
+                CRC32 crc = new CRC32();
+                if (size > 0) crc.update(bytes, Block.HEADER_TOTAL_SIZE, size);
+                assert headerChecksum == (int) crc.getValue();
+            });
+        }
     }
 }
