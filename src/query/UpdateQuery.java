@@ -2,8 +2,7 @@ package query;
 
 import storage.Block;
 import storage.BlocksStorage;
-import table.DataType;
-import table.Table;
+import table.*;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -12,7 +11,7 @@ import java.util.*;
 public class UpdateQuery implements Query {
     public String tableName;
     private final Map<String, String> setAssignments = new LinkedHashMap<>();
-    
+
     // Condition parts
     private Condition condition;
 
@@ -67,7 +66,7 @@ public class UpdateQuery implements Query {
         LinkedHashMap<String, DataType> schema = table.getColumn();
         BlocksStorage blocksStorage = BlocksStorage.getInstance();
         List<String> schemaKeys = new ArrayList<>(schema.keySet());
-        
+
         int whereColIndex;
         DataType whereColType;
         if (condition != null) {
@@ -86,20 +85,21 @@ public class UpdateQuery implements Query {
             int finalWhereColIndex = whereColIndex;
             DataType finalWhereColType = whereColType;
             final int[] nextBlockId = {-1};
-            
+
+            int finalBlockId = blockId;
             blocksStorage.updateBlock(blockId, bytes -> {
                 ByteBuffer buffer = ByteBuffer.wrap(bytes);
                 int blockSize = buffer.getInt(Block.OFFSET_SIZE);
                 nextBlockId[0] = buffer.getInt(Block.OFFSET_NEXT_BLOCK);
-                
+
                 if (blockSize == 0) return;
- 
+
                 int currentPos = Block.HEADER_TOTAL_SIZE;
                 while (currentPos < Block.HEADER_TOTAL_SIZE + blockSize) {
                     buffer.position(currentPos);
                     List<Object> record = new ArrayList<>();
                     int recordStartByte = currentPos;
-                    
+
                     for (Map.Entry<String, DataType> entry : schema.entrySet()) {
                         DataType type = entry.getValue();
                         switch (type) {
@@ -115,17 +115,23 @@ public class UpdateQuery implements Query {
                     }
                     int recordEndByte = buffer.position();
                     currentPos = recordEndByte;
- 
+
                     if (condition == null || condition.evaluate(record, finalWhereColIndex, finalWhereColType)) {
                         // Apply updates to the record in-place in the bytes array
+                        long pointer = ((long) finalBlockId << 32) | (recordStartByte & 0xFFFFFFFFL);
                         buffer.position(recordStartByte);
                         for (int i = 0; i < schemaKeys.size(); i++) {
                             String colName = schemaKeys.get(i);
                             DataType type = schema.get(colName);
                             String newValueStr = setAssignments.getOrDefault(colName, null);
                             Object value = record.get(i);
-                            
+
                             if (newValueStr != null) {
+                                // If column belongs to index, update it
+                                if (table.getIndexes().containsKey(colName)) {
+                                    updateIndexForUpdate(table, colName, value, newValueStr, pointer);
+                                }
+
                                 switch (type) {
                                     case INT -> buffer.putInt(Integer.parseInt(newValueStr));
                                     case FLOAT -> buffer.putFloat(Float.parseFloat(newValueStr));
@@ -156,6 +162,32 @@ public class UpdateQuery implements Query {
                 }
             });
             blockId = nextBlockId[0];
+        }
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void updateIndexForUpdate(Table table, String colName, Object oldVal, String newValStr, long pointer) {
+        Index idx = table.getIndexes().get(colName);
+        if (idx == null) return;
+
+        DataType type = table.getColumn().get(colName);
+        BTreeDisk tree = idx.getBTree();
+        try {
+            // Remove old pointer
+            switch (type) {
+                case INT -> tree.delete(new BKey<>((Integer) oldVal), pointer);
+                case FLOAT -> tree.delete(new BKey<>((Float) oldVal), pointer);
+                case STRING -> tree.delete(new BKey<>((String) oldVal), pointer);
+            }
+
+            // Add new pointer
+            switch (type) {
+                case INT -> tree.insert(new BKey<>(Integer.parseInt(newValStr)), pointer);
+                case FLOAT -> tree.insert(new BKey<>(Float.parseFloat(newValStr)), pointer);
+                case STRING -> tree.insert(new BKey<>(newValStr), pointer);
+            }
+        } catch (IOException | NumberFormatException e) {
+            System.err.println("Error updating index for " + colName + ": " + e.getMessage());
         }
     }
 

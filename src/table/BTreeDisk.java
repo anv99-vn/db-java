@@ -30,7 +30,7 @@ import java.util.List;
 public class BTreeDisk<T extends Comparable<T>> {
 
     // ── Hằng số metadata ──────────────────────────────────────────────────────
-    private static final int METADATA_BLOCK_ID = 0;
+    private final int metadataBlockId;
     private static final int META_OFFSET_ROOT  = Block.HEADER_TOTAL_SIZE;      // 12
     private static final int META_OFFSET_T     = Block.HEADER_TOTAL_SIZE + 4;  // 16
     private static final int META_PAYLOAD_LEN  = 8;
@@ -45,12 +45,14 @@ public class BTreeDisk<T extends Comparable<T>> {
     /**
      * Tạo mới hoặc load BTreeDisk từ storage đã có.
      *
-     * @param storage  BlocksStorage đã mở
-     * @param t        minimum degree (chỉ dùng khi tạo mới)
+     * @param storage          BlocksStorage đã mở
+     * @param metadataBlockId  Id của block chứa metadata (rootPageId, t)
+     * @param t                minimum degree (chỉ dùng khi tạo mới)
      */
-    public BTreeDisk(BlocksStorage storage, int t) throws IOException {
+    public BTreeDisk(BlocksStorage storage, int metadataBlockId, int t) throws IOException {
         this.storage = storage;
-        Block metaBlock = storage.getBlock(METADATA_BLOCK_ID, null);
+        this.metadataBlockId = metadataBlockId;
+        Block metaBlock = storage.getBlock(metadataBlockId, null);
         if (metaBlock != null && metaBlock.getSize() >= META_PAYLOAD_LEN) {
             ByteBuffer buf = ByteBuffer.wrap(metaBlock.bytes);
             this.rootPageId = buf.getInt(META_OFFSET_ROOT);
@@ -473,18 +475,19 @@ public class BTreeDisk<T extends Comparable<T>> {
         byte[] payload = new byte[META_PAYLOAD_LEN];
         ByteBuffer.wrap(payload).putInt(rootPageId).putInt(t);
 
-        if (storage.getTotalBlockCount() == 0) {
-            Block meta = new Block();
-            meta.insert(payload);
-            storage.allocateAndWrite(meta); // block 0
-        } else {
-            storage.updateBlock(METADATA_BLOCK_ID, data -> {
-                ByteBuffer buf = ByteBuffer.wrap(data);
-                buf.putInt(Block.OFFSET_SIZE,   META_PAYLOAD_LEN);
-                buf.putInt(META_OFFSET_ROOT,    rootPageId);
-                buf.putInt(META_OFFSET_T,       t);
-            });
+        if (storage.getTotalBlockCount() <= metadataBlockId) {
+            // Allocate blank blocks if needed until metadataBlockId
+            while (storage.getTotalBlockCount() <= metadataBlockId) {
+                storage.allocateAndWrite(new Block());
+            }
         }
+        
+        storage.updateBlock(metadataBlockId, data -> {
+            ByteBuffer buf = ByteBuffer.wrap(data);
+            buf.putInt(Block.OFFSET_SIZE,   META_PAYLOAD_LEN);
+            buf.putInt(META_OFFSET_ROOT,    rootPageId);
+            buf.putInt(META_OFFSET_T,       t);
+        });
     }
 
     // ── Node I/O ───────────────────────────────────────────────────────────────

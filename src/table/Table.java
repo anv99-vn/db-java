@@ -1,5 +1,6 @@
 package table;
 
+import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -69,6 +70,13 @@ public class Table {
         if (firstBlock == -1) {
             setFirstBlock(id);
         }
+    }
+
+    public void addIndex(String colName, int metadataBlockId) throws IOException {
+        DataType type = column.get(colName);
+        if (type == null) throw new IllegalArgumentException("Column not found: " + colName);
+        Index idx = new Index(colName, metadataBlockId, type);
+        indexes.put(colName, idx);
     }
 
     public void setFirstBlock(int id) {

@@ -5,7 +5,6 @@ import storage.BlocksStorage;
 import table.Table;
 import table.SchemaManager;
 
-import java.io.File;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
@@ -23,9 +22,9 @@ class FullFlowTest {
 
     @BeforeEach
     void setup() throws IOException {
-        File file = new File(DATA_FILE);
-        if (file.exists()) file.delete();
-        BlocksStorage.getInstance().clearCache();
+        // Use reset() instead of file.delete() – on Windows the file is held open by the
+        // singleton's FileChannel and cannot be deleted while in use.
+        BlocksStorage.getInstance().reset();
     }
 
     @Test

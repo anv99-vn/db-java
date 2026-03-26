@@ -184,6 +184,28 @@ public class BlocksStorage {
 
     public void clearCache() {
         blockCache.clear();
+        // Re-sync currentFileSize from actual file to stay consistent
+        // (e.g. after the underlying file is deleted and recreated in tests)
+        try {
+            currentFileSize.set(fileChannel.size());
+        } catch (IOException e) {
+            // ignore – best effort
+        }
+    }
+
+    /**
+     * Truncates the storage file to 0 bytes and resets internal state.
+     * Use in tests instead of deleting the file (which fails on Windows when the file is open).
+     */
+    public void reset() throws IOException {
+        fileLock.writeLock().lock();
+        try {
+            blockCache.clear();
+            fileChannel.truncate(0);
+            currentFileSize.set(0);
+        } finally {
+            fileLock.writeLock().unlock();
+        }
     }
 
     public int getTotalBlockCount() {

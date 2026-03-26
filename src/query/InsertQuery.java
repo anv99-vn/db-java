@@ -2,9 +2,7 @@ package query;
 
 import storage.Block;
 import storage.BlocksStorage;
-import table.DataType;
-import table.Index;
-import table.Table;
+import table.*;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -25,13 +23,13 @@ public class InsertQuery implements Query {
     public void parse(String query) {
         SqlTokenizer tokenizer = new SqlTokenizer(query);
         List<String> tokens = tokenizer.tokenize();
-        
+
         if (tokens.size() < 4 || !tokens.get(0).equalsIgnoreCase("INSERT") || !tokens.get(1).equalsIgnoreCase("INTO")) {
             throw new IllegalArgumentException("Invalid query syntax: must start with INSERT INTO");
         }
 
         this.tableName = tokens.get(2);
-        
+
         int valuesIndex = -1;
         for (int i = 3; i < tokens.size(); i++) {
             if (tokens.get(i).equalsIgnoreCase("VALUES")) {
@@ -123,9 +121,9 @@ public class InsertQuery implements Query {
             // Ensure payload starts at HEADER_TOTAL_SIZE (accounts for checksum)
             newBlockBuffer.position(Block.HEADER_TOTAL_SIZE);
             newBlockBuffer.put(recordData);
-            
+
             finalBlockId = blocksStorage.allocateAndWrite(new Block(newBlockBuffer.array()));
-            
+
             // Link old last block to new block
             if (lastBlockId != -1) {
                 blocksStorage.updateBlock(lastBlockId, bytes -> {
@@ -133,7 +131,7 @@ public class InsertQuery implements Query {
                     buffer.putInt(Block.OFFSET_NEXT_BLOCK, finalBlockId); // index 4 is nextBlockId
                 });
             }
-            
+
             table.setLastBlock(finalBlockId);
             finalOffset = HEADER_TOTAL_SIZE; // Header includes checksum (size + nextBlockId + checksum)
         }
@@ -145,10 +143,32 @@ public class InsertQuery implements Query {
     }
 
     private void updateIndexes(Table table, int blockId, int offset) {
+        long pointer = ((long) blockId << 32) | (offset & 0xFFFFFFFFL);
+        Map<String, Index> indexes = table.getIndexes();
+        LinkedHashMap<String, DataType> columns = table.getColumn();
 
+        int colIdx = 0;
+        for (Map.Entry<String, DataType> entry : columns.entrySet()) {
+            String colName = entry.getKey();
+            if (indexes.containsKey(colName)) {
+                Index idx = indexes.get(colName);
+                insertIntoIndex(idx, insertParams.get(colIdx), pointer, entry.getValue());
+            }
+            colIdx++;
+        }
     }
 
+    @SuppressWarnings({"unchecked", "rawtypes"})
     private void insertIntoIndex(Index index, String valueStr, long pointer, DataType type) {
-
+        try {
+            BTreeDisk tree = index.getBTree();
+            switch (type) {
+                case INT -> tree.insert(new BKey<>(Integer.parseInt(valueStr)), pointer);
+                case FLOAT -> tree.insert(new BKey<>(Float.parseFloat(valueStr)), pointer);
+                case STRING -> tree.insert(new BKey<>(valueStr), pointer);
+            }
+        } catch (IOException | NumberFormatException e) {
+            System.err.println("Error updating index for " + index.getColumnName() + ": " + e.getMessage());
+        }
     }
 }

@@ -32,7 +32,7 @@ class BTreeDiskTest {
     @Test
     @DisplayName("Test 1: Insert and Search with Integer keys")
     void testInsertAndSearch() throws IOException {
-        BTreeDisk<Integer> tree = new BTreeDisk<>(storage, 3);
+        BTreeDisk<Integer> tree = new BTreeDisk<>(storage, 0, 3);
 
         int[] keys = {10, 20, 5, 6, 12, 30, 7, 17};
         for (int k : keys) {
@@ -53,7 +53,7 @@ class BTreeDiskTest {
     @Test
     @DisplayName("Test 2: Range Query [lower, upper]")
     void testRangeQuery() throws IOException {
-        BTreeDisk<Integer> tree = new BTreeDisk<>(storage, 3);
+        BTreeDisk<Integer> tree = new BTreeDisk<>(storage, 0, 3);
 
         int[] keys = {10, 20, 5, 6, 12, 30, 7, 17};
         for (int k : keys) {
@@ -74,7 +74,7 @@ class BTreeDiskTest {
     @Test
     @DisplayName("Test 3: Delete Pointer (Partial Delete)")
     void testDeletePointer() throws IOException {
-        BTreeDisk<Integer> tree = new BTreeDisk<>(storage, 3);
+        BTreeDisk<Integer> tree = new BTreeDisk<>(storage, 0, 3);
 
         tree.insert(new BKey<>(42), 100L);
         tree.insert(new BKey<>(42), 200L);
@@ -94,7 +94,7 @@ class BTreeDiskTest {
     @Test
     @DisplayName("Test 4: Delete Key (Total Delete)")
     void testDeleteKey() throws IOException {
-        BTreeDisk<Integer> tree = new BTreeDisk<>(storage, 3);
+        BTreeDisk<Integer> tree = new BTreeDisk<>(storage, 0, 3);
 
         int[] keys = {10, 20, 5, 6, 12, 30, 7, 17};
         for (int k : keys) {
@@ -114,7 +114,7 @@ class BTreeDiskTest {
     @DisplayName("Test 5: Persistence (Close and Reopen)")
     void testPersistence() throws IOException {
         // Build tree
-        BTreeDisk<Integer> tree = new BTreeDisk<>(storage, 3);
+        BTreeDisk<Integer> tree = new BTreeDisk<>(storage, 0, 3);
         int[] keys = {10, 20, 5, 30};
         for (int k : keys) tree.insert(new BKey<>(k), (long) k);
         tree.close();
@@ -122,7 +122,7 @@ class BTreeDiskTest {
 
         // Reopen same file
         storage = new BlocksStorage(TEST_DB_FILE);
-        BTreeDisk<Integer> reopenedTree = new BTreeDisk<>(storage, 0); // t is loaded from disk
+        BTreeDisk<Integer> reopenedTree = new BTreeDisk<>(storage, 0, 0); // t is loaded from disk
 
         for (int k : keys) {
             assertNotNull(reopenedTree.search(new BKey<>(k)), "Key " + k + " must persist");
@@ -133,7 +133,7 @@ class BTreeDiskTest {
     @Test
     @DisplayName("Test 6: Stress with Root Splits (Degree 2)")
     void testStressRootSplits() throws IOException {
-        BTreeDisk<Integer> tree = new BTreeDisk<>(storage, 2);
+        BTreeDisk<Integer> tree = new BTreeDisk<>(storage, 0, 2);
         int N = 50;
         for (int i = 1; i <= N; i++) {
             tree.insert(new BKey<>(i), (long) i);
@@ -151,7 +151,7 @@ class BTreeDiskTest {
     @Test
     @DisplayName("Test 7: String Keys Persistence")
     void testStringKeys() throws IOException {
-        BTreeDisk<String> tree = new BTreeDisk<>(storage, 2);
+        BTreeDisk<String> tree = new BTreeDisk<>(storage, 0, 2);
         String[] names = {"Alice", "Bob", "Charlie", "Dave", "Eve"};
         for (String n : names) tree.insert(new BKey<>(n), 888L);
 

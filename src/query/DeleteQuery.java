@@ -2,8 +2,7 @@ package query;
 
 import storage.BlocksStorage;
 import storage.Block;
-import table.DataType;
-import table.Table;
+import table.*;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -73,6 +72,7 @@ public class DeleteQuery implements Query {
         while (true) {
             if (blockId == -1) break;
             AtomicInteger nextBlockId = new AtomicInteger(-1);
+            int finalBlockId = blockId;
             blocksStorage.updateBlock(blockId, bytes -> {
                 ByteBuffer buffer = ByteBuffer.wrap(bytes);
                 int blockSize = buffer.getInt(Block.OFFSET_SIZE);
@@ -99,10 +99,22 @@ public class DeleteQuery implements Query {
                     }
 
                     if (condition == null || condition.evaluate(record, whereColIndex, whereColType)) {
+                        // Remove current record from index before deleting/moving
+                        long deletedPointer = ((long) finalBlockId << 32) | (currentPos & 0xFFFFFFFFL);
+                        removeFromIndexes(table, record, deletedPointer);
+
                         // lấy record cuối block thay thế vào record bị xoá
                         int lastRecordPos = Block.HEADER_TOTAL_SIZE + blockSize - recordSize;
 
                         if (currentPos != lastRecordPos) {
+                            // Because we move the last record, we must update its pointers in all indexes
+                            List<Object> lastRecord = parseRecord(table, bytes, lastRecordPos);
+                            long oldLastPointer = ((long) finalBlockId << 32) | (lastRecordPos & 0xFFFFFFFFL);
+                            long newLastPointer = ((long) finalBlockId << 32) | (currentPos & 0xFFFFFFFFL);
+
+                            // Remove old pointer and add new pointer for each index
+                            updateIndexesForMove(table, lastRecord, oldLastPointer, newLastPointer);
+
                             // Copy last record to current position
                             System.arraycopy(bytes, lastRecordPos, bytes, currentPos, recordSize);
                         }
@@ -118,5 +130,78 @@ public class DeleteQuery implements Query {
             blockId = nextBlockId.get();
         }
 
+    }
+
+    private List<Object> parseRecord(Table table, byte[] bytes, int pos) {
+        ByteBuffer buffer = ByteBuffer.wrap(bytes);
+        buffer.position(pos);
+        List<Object> record = new ArrayList<>();
+        LinkedHashMap<String, DataType> schema = table.getColumn();
+        for (Map.Entry<String, DataType> entry : schema.entrySet()) {
+            DataType type = entry.getValue();
+            switch (type) {
+                case INT -> record.add(buffer.getInt());
+                case FLOAT -> record.add(buffer.getFloat());
+                case STRING -> {
+                    int size = table.getColumnSizes().get(entry.getKey());
+                    byte[] strBytes = new byte[size];
+                    buffer.get(strBytes);
+                    record.add(new String(strBytes).trim());
+                }
+            }
+        }
+        return record;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void removeFromIndexes(Table table, List<Object> record, long pointer) {
+        Map<String, Index> indexes = table.getIndexes();
+        List<String> schemaKeys = new ArrayList<>(table.getColumn().keySet());
+        for (int i = 0; i < schemaKeys.size(); i++) {
+            String colName = schemaKeys.get(i);
+            Index idx = indexes.get(colName);
+            if (idx != null) {
+                DataType type = table.getColumn().get(colName);
+                BTreeDisk tree = idx.getBTree();
+                try {
+                    Object val = record.get(i);
+                    switch (type) {
+                        case INT -> tree.delete(new BKey<>((Integer) val), pointer);
+                        case FLOAT -> tree.delete(new BKey<>((Float) val), pointer);
+                        case STRING -> tree.delete(new BKey<>((String) val), pointer);
+                    }
+                } catch (IOException e) {
+                    System.err.println("Error removing from index: " + e.getMessage());
+                }
+            }
+        }
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void updateIndexesForMove(Table table, List<Object> record, long oldPointer, long newPointer) {
+        Map<String, Index> indexes = table.getIndexes();
+        List<String> schemaKeys = new ArrayList<>(table.getColumn().keySet());
+        for (int i = 0; i < schemaKeys.size(); i++) {
+            String colName = schemaKeys.get(i);
+            Index idx = indexes.get(colName);
+            if (idx != null) {
+                DataType type = table.getColumn().get(colName);
+                BTreeDisk tree = idx.getBTree();
+                try {
+                    Object val = record.get(i);
+                    BKey key;
+                    switch (type) {
+                        case INT -> key = new BKey<>((Integer) val);
+                        case FLOAT -> key = new BKey<>((Float) val);
+                        case STRING -> key = new BKey<>((String) val);
+                        default -> throw new IllegalStateException("Unknown type");
+                    }
+                    tree.delete(key, oldPointer);
+                    tree.insert(key, newPointer);
+                } catch (IOException e) {
+                    System.err.println("Error updating index for move: " + e.getMessage());
+                }
+            }
+        }
     }
 }

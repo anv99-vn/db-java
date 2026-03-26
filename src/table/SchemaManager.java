@@ -66,6 +66,16 @@ public class SchemaManager {
                     buffer.putInt(sizes.get(colName));
                 }
             }
+
+            // Indexes
+            Map<String, Index> indexes = table.getIndexes();
+            buffer.putInt(indexes.size());
+            for (Index index : indexes.values()) {
+                byte[] colNameBytes = index.getColumnName().getBytes(StandardCharsets.UTF_8);
+                buffer.putInt(colNameBytes.length);
+                buffer.put(colNameBytes);
+                buffer.putInt(index.getMetadataBlockId());
+            }
         }
 
         // Tạo block để ghi
@@ -124,6 +134,18 @@ public class SchemaManager {
                 
                 table.addColumn(colName, DataType.fromId(typeId), size);
             }
+
+            // Indexes
+            int numIndexes = buffer.getInt();
+            for (int j = 0; j < numIndexes; j++) {
+                int colNameLen = buffer.getInt();
+                byte[] colNameBytes = new byte[colNameLen];
+                buffer.get(colNameBytes);
+                String colName = new String(colNameBytes, StandardCharsets.UTF_8);
+                int metaBlockId = buffer.getInt();
+                table.addIndex(colName, metaBlockId);
+            }
+
             // Add to list
             tables.add(table);
         }
