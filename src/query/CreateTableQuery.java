@@ -1,24 +1,24 @@
 package query;
 
 import storage.Block;
-import table.DataType;
-import table.PrimaryKey;
+import table.SchemaManager;
 import table.Table;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
-public class CreateTableQuery implements Query {
+public class CreateTableQuery implements DatabaseQuery {
     public String tableName;
-    public LinkedHashMap<String, DataType> columns = new LinkedHashMap<>();
+    public LinkedHashMap<String, table.DataType> columns = new LinkedHashMap<>();
     public LinkedHashMap<String, Integer> columnSizes = new LinkedHashMap<>();
     public String primaryKeyColumn;
 
     @Override
     public void parse(String query) {
+        // ... (Parsing logic remains the same)
         SqlTokenizer tokenizer = new SqlTokenizer(query);
         List<String> tokens = tokenizer.tokenize();
 
@@ -36,7 +36,7 @@ public class CreateTableQuery implements Query {
 
         while (i < tokens.size() && !tokens.get(i).equals(")")) {
             String token = tokens.get(i);
-            
+
             if (token.equalsIgnoreCase("PRIMARY")) {
                 i++; // Skip PRIMARY
                 if (tokens.get(i).equalsIgnoreCase("KEY")) {
@@ -56,12 +56,12 @@ public class CreateTableQuery implements Query {
                 i++;
                 String typePart = tokens.get(i).toUpperCase();
                 i++;
-                
-                DataType type;
+
+                table.DataType type;
                 int size = 4;
 
                 if (typePart.equals("STRING")) {
-                    type = DataType.STRING;
+                    type = table.DataType.STRING;
                     if (i < tokens.size() && tokens.get(i).equals("(")) {
                         i++; // Skip (
                         size = Integer.parseInt(tokens.get(i));
@@ -75,7 +75,7 @@ public class CreateTableQuery implements Query {
                     }
                 } else {
                     try {
-                        type = DataType.valueOf(typePart);
+                        type = table.DataType.valueOf(typePart);
                     } catch (IllegalArgumentException e) {
                         throw new IllegalArgumentException("Unknown data type: " + typePart);
                     }
@@ -83,7 +83,7 @@ public class CreateTableQuery implements Query {
                 columns.put(colName, type);
                 columnSizes.put(colName, size);
             }
-            
+
             if (i < tokens.size() && tokens.get(i).equals(",")) {
                 i++;
             }
@@ -91,29 +91,34 @@ public class CreateTableQuery implements Query {
     }
 
     @Override
-    public void run(Table table) throws IOException {
-        table.init(); // Initialize lists if needed
+    public void run(SchemaManager schemaManager) throws IOException {
+        List<Table> tables = schemaManager.loadSchemas();
+        Optional<Table> option = tables.stream().filter(p -> p.getName().equals(tableName)).findAny();
+        if (option.isPresent()) {
+            throw new IllegalArgumentException("Table '" + tableName + "' already exists");
+        }
 
-        for (Map.Entry<String, DataType> entry : columns.entrySet()) {
+        table.Table table = new table.Table();
+        table.setName(tableName);
+
+        for (Map.Entry<String, table.DataType> entry : columns.entrySet()) {
             String colName = entry.getKey();
             table.addColumn(colName, entry.getValue(), columnSizes.get(colName));
         }
 
         if (primaryKeyColumn != null) {
-            DataType pkType = columns.get(primaryKeyColumn);
-            if (pkType == null) {
-                throw new IllegalArgumentException("Primary key column " + primaryKeyColumn + " not defined");
-            }
-            table.setPrimaryKey(new PrimaryKey(primaryKeyColumn, pkType));
-
-            // Allocate a dedicated metadata block for the PK B-Tree index
+            table.DataType pkType = columns.get(primaryKeyColumn);
+            table.setPrimaryKey(new table.PrimaryKey(primaryKeyColumn, pkType));
             int pkIndexMetaBlockId = storage.BlocksStorage.getInstance().allocateAndWrite(new Block());
             table.addIndex(primaryKeyColumn, pkIndexMetaBlockId);
         }
 
-        // Allocate initial data block
         Block initialBlock = new Block();
         int blockId = storage.BlocksStorage.getInstance().allocateAndWrite(initialBlock);
         table.setLastBlock(blockId);
+        table.setFirstBlock(blockId);
+
+        tables.add(table);
+        schemaManager.saveSchemas(tables);
     }
 }

@@ -71,9 +71,13 @@ public class SchemaManager {
             Map<String, Index> indexes = table.getIndexes();
             buffer.putInt(indexes.size());
             for (Index index : indexes.values()) {
-                byte[] colNameBytes = index.getColumnName().getBytes(StandardCharsets.UTF_8);
-                buffer.putInt(colNameBytes.length);
-                buffer.put(colNameBytes);
+                java.util.List<String> cols = index.getColumnNames();
+                buffer.putInt(cols.size());
+                for (String col : cols) {
+                    byte[] colNameBytes = col.getBytes(StandardCharsets.UTF_8);
+                    buffer.putInt(colNameBytes.length);
+                    buffer.put(colNameBytes);
+                }
                 buffer.putInt(index.getMetadataBlockId());
             }
 
@@ -150,12 +154,16 @@ public class SchemaManager {
             // Indexes
             int numIndexes = buffer.getInt();
             for (int j = 0; j < numIndexes; j++) {
-                int colNameLen = buffer.getInt();
-                byte[] colNameBytes = new byte[colNameLen];
-                buffer.get(colNameBytes);
-                String colName = new String(colNameBytes, StandardCharsets.UTF_8);
+                int numIdxCols = buffer.getInt();
+                java.util.List<String> idxCols = new java.util.ArrayList<>();
+                for (int k = 0; k < numIdxCols; k++) {
+                    int colNameLen = buffer.getInt();
+                    byte[] colNameBytes = new byte[colNameLen];
+                    buffer.get(colNameBytes);
+                    idxCols.add(new String(colNameBytes, StandardCharsets.UTF_8));
+                }
                 int metaBlockId = buffer.getInt();
-                table.addIndex(colName, metaBlockId);
+                table.addIndex(idxCols, metaBlockId);
             }
 
             // Primary Key

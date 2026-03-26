@@ -8,7 +8,7 @@ import table.SchemaManager;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
-import java.util.ArrayList;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -33,17 +33,14 @@ class FullFlowTest {
         BlocksStorage storage = BlocksStorage.getInstance();
         SchemaManager schemaManager = new SchemaManager(storage);
 
-        // --- BƯỚC QUAN TRỌNG: FORMAT DATABASE ---
-        // Ghi Schema trống vào Block 0 ngay lập tức.
-        schemaManager.saveSchemas(new ArrayList<>()); 
-        System.out.println("--- Đã định dạng: Block 0 đã được dành riêng cho Schema ---");
-
         // 1. CREATE Table
-        Table table = new Table();
-        table.setName("products");
         CreateTableQuery createQuery = new CreateTableQuery();
         createQuery.parse("CREATE TABLE products (id INT, name STRING(20), price FLOAT)");
-        createQuery.run(table);
+        createQuery.run(schemaManager);
+        Table table = schemaManager.loadSchemas().stream()
+                .filter(p -> p.getName().equals("products"))
+                .findAny()
+                .orElseThrow(() -> new IllegalArgumentException("Table 'products' does not exist"));
         
         // 2. INSERT Data
         // Vì Block 0 đã bị SchemaManager chiếm, InsertQuery sẽ allocate Block 1

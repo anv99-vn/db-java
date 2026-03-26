@@ -73,10 +73,23 @@ public class Table {
     }
 
     public void addIndex(String colName, int metadataBlockId) throws IOException {
-        DataType type = column.get(colName);
-        if (type == null) throw new IllegalArgumentException("Column not found: " + colName);
-        Index idx = new Index(colName, metadataBlockId, type);
-        indexes.put(colName, idx);
+        addIndex(java.util.List.of(colName), metadataBlockId);
+    }
+
+    public void addIndex(java.util.List<String> colNames, int metadataBlockId) throws IOException {
+        DataType type;
+        if (colNames.size() > 1) {
+            type = DataType.COMPOSITE;
+        } else {
+            type = column.get(colNames.get(0));
+            if (type == null) throw new IllegalArgumentException("Column not found: " + colNames.get(0));
+        }
+        Index idx = new Index(colNames, metadataBlockId, type);
+        // Use first column name or a concatenated string as map key? 
+        // For now use the first one or we can change how indexes are stored.
+        // Actually, to find an index, we might need a better key. 
+        // Let's use the first column for now, but really we should allow multiple indexes.
+        indexes.put(colNames.get(0), idx);
     }
 
     public void setFirstBlock(int id) {

@@ -6,6 +6,7 @@ public enum DataType {
     INT(0),
     FLOAT(1),
     STRING(2),
+    COMPOSITE(3),
     ;
 
     private final int id;

@@ -15,14 +15,17 @@ import java.util.zip.CRC32;
 class UpdateQueryTest {
 
     private Table setupTestTable() throws IOException {
-        File dbFile = new File("data.bin");
-        if (dbFile.exists()) dbFile.delete();
-        BlocksStorage.getInstance().clearCache();
+        BlocksStorage.getInstance().reset();
 
-        Table table = new Table();
+        table.SchemaManager schemaManager = new table.SchemaManager(BlocksStorage.getInstance());
         CreateTableQuery createTable = new CreateTableQuery();
         createTable.parse("CREATE TABLE test (id INT, name STRING(10), val FLOAT)");
-        createTable.run(table);
+        createTable.run(schemaManager);
+        
+        Table table = schemaManager.loadSchemas().stream()
+                .filter(p -> p.getName().equals("test"))
+                .findAny()
+                .orElseThrow(() -> new IllegalArgumentException("Table 'test' does not exist"));
 
         insert(table, "1, 'Alice', 10.0");
         insert(table, "2, 'Bob', 20.0");

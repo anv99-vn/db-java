@@ -66,6 +66,11 @@ public class BTreeDisk<T extends Comparable<T>> {
 
     // ── Search ─────────────────────────────────────────────────────────────────
 
+    public BKey<T> search(T key) throws IOException {
+        if (key == null) return null;
+        return search(new BKey<>(key));
+    }
+
     public BKey<T> search(BKey<T> key) throws IOException {
         if (rootPageId == -1) return null;
         return searchNode(rootPageId, key);

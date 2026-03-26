@@ -19,13 +19,17 @@ class IndexOptimizationTest {
     @DisplayName("Test Create Index and Select Optimization")
     void testIndexOptimization() throws IOException {
         BlocksStorage storage = BlocksStorage.getInstance();
-        Table table = new Table();
-        table.setName("employees");
+        java.util.Map<String, Table> tables = new java.util.HashMap<>();
+        SchemaManager schemaManager = new SchemaManager(storage);
         
         // 1. Create table
         CreateTableQuery createTable = new CreateTableQuery();
         createTable.parse("CREATE TABLE employees (id INT, name STRING(20), dept STRING(10))");
-        createTable.run(table);
+        createTable.run(schemaManager);
+        Table table = schemaManager.loadSchemas().stream()
+                .filter(p -> p.getName().equals("employees"))
+                .findAny()
+                .orElseThrow(() -> new IllegalArgumentException("Table 'employees' does not exist"));
 
         // 2. Insert some data BEFORE creating index
         InsertQuery insert = new InsertQuery();
@@ -39,7 +43,13 @@ class IndexOptimizationTest {
         // 3. Create Index on 'dept' (This will backfill)
         CreateIndexQuery createIndex = new CreateIndexQuery();
         createIndex.parse("CREATE INDEX ON employees (dept)");
-        createIndex.run(table);
+        createIndex.run(schemaManager);
+
+        // RELOAD table after persistence
+        table = schemaManager.loadSchemas().stream()
+                .filter(p -> p.getName().equals("employees"))
+                .findAny()
+                .orElseThrow(() -> new IllegalArgumentException("Table 'employees' does not exist"));
 
         // 4. Verify Index exists and has data
         assertTrue(table.getIndexes().containsKey("dept"), "Index should be registered");

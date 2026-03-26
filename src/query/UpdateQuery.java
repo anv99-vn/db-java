@@ -6,6 +6,7 @@ import table.*;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 public class UpdateQuery implements Query {
@@ -117,47 +118,48 @@ public class UpdateQuery implements Query {
                     currentPos = recordEndByte;
 
                     if (condition == null || condition.evaluate(record, finalWhereColIndex, finalWhereColType)) {
-                        // Apply updates to the record in-place in the bytes array
+                        // Apply updates to all necessary indexes first
                         long pointer = ((long) finalBlockId << 32) | (recordStartByte & 0xFFFFFFFFL);
+                        try {
+                            updateAllIndexesForUpdate(table, record, setAssignments, pointer);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+
+                        // Apply updates to the record in-place in the bytes array
                         buffer.position(recordStartByte);
                         for (int i = 0; i < schemaKeys.size(); i++) {
                             String colName = schemaKeys.get(i);
                             DataType type = schema.get(colName);
                             String newValueStr = setAssignments.getOrDefault(colName, null);
-                            Object value = record.get(i);
 
                             if (newValueStr != null) {
-                                // If column belongs to index, update it
-                                if (table.getIndexes().containsKey(colName)) {
-                                    updateIndexForUpdate(table, colName, value, newValueStr, pointer);
-                                }
-
                                 switch (type) {
                                     case INT -> buffer.putInt(Integer.parseInt(newValueStr));
                                     case FLOAT -> buffer.putFloat(Float.parseFloat(newValueStr));
                                     case STRING -> {
                                         int size = table.getColumnSizes().get(colName);
                                         byte[] strBytes = new byte[size];
-                                        byte[] src = newValueStr.getBytes();
+                                        String trimmed = newValueStr;
+                                        if (trimmed.startsWith("'") || trimmed.startsWith("\"")) {
+                                            trimmed = trimmed.substring(1, trimmed.length() - 1);
+                                        }
+                                        byte[] src = trimmed.getBytes(StandardCharsets.UTF_8);
                                         System.arraycopy(src, 0, strBytes, 0, Math.min(src.length, size));
                                         buffer.put(strBytes);
                                     }
                                 }
                             } else {
-                                // Write back original value at the correct position
-                                switch (type) {
-                                    case INT -> buffer.putInt((Integer) value);
-                                    case FLOAT -> buffer.putFloat((Float) value);
-                                    case STRING -> {
-                                        int size = table.getColumnSizes().get(colName);
-                                        byte[] strBytes = new byte[size];
-                                        byte[] src = ((String) value).getBytes();
-                                        System.arraycopy(src, 0, strBytes, 0, Math.min(src.length, size));
-                                        buffer.put(strBytes);
-                                    }
+                                // Skip this column by moving position
+                                if (type == DataType.STRING) {
+                                    buffer.position(buffer.position() + table.getColumnSizes().get(colName));
+                                } else {
+                                    buffer.position(buffer.position() + 4); // INT and FLOAT are 4 bytes
                                 }
                             }
                         }
+                    } else {
+                        currentPos = recordEndByte;
                     }
                 }
             });
@@ -166,29 +168,62 @@ public class UpdateQuery implements Query {
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private void updateIndexForUpdate(Table table, String colName, Object oldVal, String newValStr, long pointer) {
-        Index idx = table.getIndexes().get(colName);
-        if (idx == null) return;
+    private void updateAllIndexesForUpdate(Table table, List<Object> oldRecord, Map<String, String> assignments, long pointer) throws IOException {
+        Map<String, Index> indexes = table.getIndexes();
+        List<String> schemaKeys = new ArrayList<>(table.getColumn().keySet());
+        LinkedHashMap<String, DataType> schema = table.getColumn();
 
-        DataType type = table.getColumn().get(colName);
-        BTreeDisk tree = idx.getBTree();
-        try {
-            // Remove old pointer
-            switch (type) {
-                case INT -> tree.delete(new BKey<>((Integer) oldVal), pointer);
-                case FLOAT -> tree.delete(new BKey<>((Float) oldVal), pointer);
-                case STRING -> tree.delete(new BKey<>((String) oldVal), pointer);
+        for (Index idx : indexes.values()) {
+            List<String> idxCols = idx.getColumnNames();
+            boolean affected = false;
+            for (String col : idxCols) {
+                if (assignments.containsKey(col)) {
+                    affected = true;
+                    break;
+                }
             }
+            if (!affected) continue;
 
-            // Add new pointer
-            switch (type) {
-                case INT -> tree.insert(new BKey<>(Integer.parseInt(newValStr)), pointer);
-                case FLOAT -> tree.insert(new BKey<>(Float.parseFloat(newValStr)), pointer);
-                case STRING -> tree.insert(new BKey<>(newValStr), pointer);
+            // Compute old key
+            Object oldKey = collectKey(idxCols, schemaKeys, oldRecord);
+            
+            // Compute new key
+            Object[] newVals = new Object[idxCols.size()];
+            for (int i = 0; i < idxCols.size(); i++) {
+                String col = idxCols.get(i);
+                if (assignments.containsKey(col)) {
+                    newVals[i] = parseValue(assignments.get(col), schema.get(col));
+                } else {
+                    newVals[i] = oldRecord.get(schemaKeys.indexOf(col));
+                }
             }
-        } catch (IOException | NumberFormatException e) {
-            System.err.println("Error updating index for " + colName + ": " + e.getMessage());
+            Object newKey = (newVals.length == 1) ? newVals[0] : new CompositeKey(newVals);
+
+            BTreeDisk tree = idx.getBTree();
+            try {
+                tree.delete(new BKey((Comparable) oldKey), pointer);
+                tree.insert(new BKey((Comparable) newKey), pointer);
+            } catch (NumberFormatException e) {
+                System.err.println("Error updating index for " + idx.getIndexName() + ": " + e.getMessage());
+            }
         }
+    }
+
+    private Object collectKey(List<String> idxCols, List<String> schemaKeys, List<Object> record) {
+        Object[] vals = new Object[idxCols.size()];
+        for (int i = 0; i < idxCols.size(); i++) {
+            vals[i] = record.get(schemaKeys.indexOf(idxCols.get(i)));
+        }
+        return (vals.length == 1) ? vals[0] : new CompositeKey(vals);
+    }
+
+    private Object parseValue(String valStr, DataType type) {
+        return switch (type) {
+            case INT -> Integer.parseInt(valStr);
+            case FLOAT -> Float.parseFloat(valStr);
+            case STRING -> Condition.removeQuotes(valStr);
+            default -> valStr;
+        };
     }
 
     // Condition logic moved to Condition.java

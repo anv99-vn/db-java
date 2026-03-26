@@ -6,7 +6,6 @@ import table.*;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
-import java.util.ArrayList;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -21,11 +20,15 @@ class PrimaryKeyTest {
     @DisplayName("Test Duplicate PK Unique Constraint")
     void testDuplicateKeyInsert() throws IOException {
         BlocksStorage storage = BlocksStorage.getInstance();
-        Table table = new Table();
-        table.setName("accounts");
+        SchemaManager schemaManager = new SchemaManager(storage);
         CreateTableQuery createQuery = new CreateTableQuery();
         createQuery.parse("CREATE TABLE accounts (acc_id INT, owner STRING(20), PRIMARY KEY (acc_id))");
-        createQuery.run(table);
+        createQuery.run(schemaManager); // Ensure table is created before loading
+        SchemaManager newManager = new SchemaManager(storage); // Fresh manager for loading
+        Table table = newManager.loadSchemas().stream()
+                .filter(p -> p.getName().equals("accounts"))
+                .findAny()
+                .orElseThrow(() -> new IllegalArgumentException("Table 'accounts' does not exist"));
 
         InsertQuery insert = new InsertQuery();
         insert.parse("INSERT INTO accounts VALUES (1, 'User A')");
@@ -44,7 +47,8 @@ class PrimaryKeyTest {
         insert.run(table);
 
         // Case 3: Persistence - Save and reload
-        SchemaManager schemaManager = new SchemaManager(storage);
+        // Important: We still need to save if Table state (like lastBlock) changed after INSERTS if schemaManager isn't global.
+        // But the SchemaManager we passed to CreateTableQuery is already initialized.
         schemaManager.saveSchemas(Collections.singletonList(table));
         storage.clearCache();
 
@@ -69,11 +73,13 @@ class PrimaryKeyTest {
         SchemaManager schemaManager = new SchemaManager(storage);
 
         // 1. CREATE Table with Primary Key
-        Table table = new Table();
-        table.setName("users");
         CreateTableQuery createQuery = new CreateTableQuery();
         createQuery.parse("CREATE TABLE users (id INT, username STRING(20), PRIMARY KEY (id))");
-        createQuery.run(table);
+        createQuery.run(schemaManager);
+        Table table = schemaManager.loadSchemas().stream()
+                .filter(p -> p.getName().equals("users"))
+                .findAny()
+                .orElseThrow(() -> new IllegalArgumentException("Table 'users' does not exist"));
 
         assertNotNull(table.getPrimaryKey(), "Table should have a primary key");
         assertEquals("id", table.getPrimaryKey().getName());

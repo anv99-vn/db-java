@@ -156,23 +156,13 @@ public class DeleteQuery implements Query {
     @SuppressWarnings({"unchecked", "rawtypes"})
     private void removeFromIndexes(Table table, List<Object> record, long pointer) {
         Map<String, Index> indexes = table.getIndexes();
-        List<String> schemaKeys = new ArrayList<>(table.getColumn().keySet());
-        for (int i = 0; i < schemaKeys.size(); i++) {
-            String colName = schemaKeys.get(i);
-            Index idx = indexes.get(colName);
-            if (idx != null) {
-                DataType type = table.getColumn().get(colName);
-                BTreeDisk tree = idx.getBTree();
-                try {
-                    Object val = record.get(i);
-                    switch (type) {
-                        case INT -> tree.delete(new BKey<>((Integer) val), pointer);
-                        case FLOAT -> tree.delete(new BKey<>((Float) val), pointer);
-                        case STRING -> tree.delete(new BKey<>((String) val), pointer);
-                    }
-                } catch (IOException e) {
-                    System.err.println("Error removing from index: " + e.getMessage());
-                }
+        for (Index idx : indexes.values()) {
+            Object keyObj = collectKeyValues(table, idx, record);
+            BTreeDisk tree = idx.getBTree();
+            try {
+                tree.delete(new BKey((Comparable) keyObj), pointer);
+            } catch (IOException e) {
+                System.err.println("Error removing from index: " + e.getMessage());
             }
         }
     }
@@ -180,28 +170,27 @@ public class DeleteQuery implements Query {
     @SuppressWarnings({"unchecked", "rawtypes"})
     private void updateIndexesForMove(Table table, List<Object> record, long oldPointer, long newPointer) {
         Map<String, Index> indexes = table.getIndexes();
-        List<String> schemaKeys = new ArrayList<>(table.getColumn().keySet());
-        for (int i = 0; i < schemaKeys.size(); i++) {
-            String colName = schemaKeys.get(i);
-            Index idx = indexes.get(colName);
-            if (idx != null) {
-                DataType type = table.getColumn().get(colName);
-                BTreeDisk tree = idx.getBTree();
-                try {
-                    Object val = record.get(i);
-                    BKey key;
-                    switch (type) {
-                        case INT -> key = new BKey<>((Integer) val);
-                        case FLOAT -> key = new BKey<>((Float) val);
-                        case STRING -> key = new BKey<>((String) val);
-                        default -> throw new IllegalStateException("Unknown type");
-                    }
-                    tree.delete(key, oldPointer);
-                    tree.insert(key, newPointer);
-                } catch (IOException e) {
-                    System.err.println("Error updating index for move: " + e.getMessage());
-                }
+        for (Index idx : indexes.values()) {
+            Object keyObj = collectKeyValues(table, idx, record);
+            BTreeDisk tree = idx.getBTree();
+            try {
+                tree.delete(new BKey((Comparable) keyObj), oldPointer);
+                tree.insert(new BKey((Comparable) keyObj), newPointer);
+            } catch (IOException e) {
+                System.err.println("Error updating index for move: " + e.getMessage());
             }
         }
+    }
+
+    private Object collectKeyValues(Table table, Index index, List<Object> record) {
+        List<String> idxCols = index.getColumnNames();
+        List<String> schemaKeys = new ArrayList<>(table.getColumn().keySet());
+        Object[] vals = new Object[idxCols.size()];
+        for (int i = 0; i < idxCols.size(); i++) {
+            int pos = schemaKeys.indexOf(idxCols.get(i));
+            vals[i] = record.get(pos);
+        }
+        if (vals.length == 1) return vals[0];
+        return new CompositeKey(vals);
     }
 }

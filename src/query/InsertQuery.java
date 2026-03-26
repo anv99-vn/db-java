@@ -149,29 +149,45 @@ public class InsertQuery implements Query {
         long pointer = ((long) blockId << 32) | (offset & 0xFFFFFFFFL);
         Map<String, Index> indexes = table.getIndexes();
         LinkedHashMap<String, DataType> columns = table.getColumn();
+        List<String> schemaKeys = new ArrayList<>(columns.keySet());
 
-        int colIdx = 0;
-        for (Map.Entry<String, DataType> entry : columns.entrySet()) {
-            String colName = entry.getKey();
-            if (indexes.containsKey(colName)) {
-                Index idx = indexes.get(colName);
-                insertIntoIndex(idx, insertParams.get(colIdx), pointer, entry.getValue());
+        for (Index idx : indexes.values()) {
+            List<String> idxCols = idx.getColumnNames();
+            Object[] vals = new Object[idxCols.size()];
+            for (int i = 0; i < idxCols.size(); i++) {
+                String col = idxCols.get(i);
+                int colPos = schemaKeys.indexOf(col);
+                String valStr = insertParams.get(colPos);
+                DataType type = columns.get(col);
+                vals[i] = parseValue(valStr, type);
             }
-            colIdx++;
+
+            Object keyObj;
+            if (vals.length == 1) {
+                keyObj = vals[0];
+            } else {
+                keyObj = new CompositeKey(vals);
+            }
+            insertIntoIndex(idx, keyObj, pointer);
         }
     }
 
+    private Object parseValue(String valStr, DataType type) {
+        return switch (type) {
+            case INT -> Integer.parseInt(valStr);
+            case FLOAT -> Float.parseFloat(valStr);
+            case STRING -> Condition.removeQuotes(valStr);
+            default -> valStr;
+        };
+    }
+
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private void insertIntoIndex(Index index, String valueStr, long pointer, DataType type) {
+    private void insertIntoIndex(Index index, Object val, long pointer) {
         try {
             BTreeDisk tree = index.getBTree();
-            switch (type) {
-                case INT -> tree.insert(new BKey<>(Integer.parseInt(valueStr)), pointer);
-                case FLOAT -> tree.insert(new BKey<>(Float.parseFloat(valueStr)), pointer);
-                case STRING -> tree.insert(new BKey<>(valueStr), pointer);
-            }
-        } catch (IOException | NumberFormatException e) {
-            System.err.println("Error updating index for " + index.getColumnName() + ": " + e.getMessage());
+            tree.insert(new BKey((Comparable) val), pointer);
+        } catch (IOException e) {
+            System.err.println("Error updating index: " + e.getMessage());
         }
     }
 

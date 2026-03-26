@@ -62,16 +62,18 @@ class InsertQueryTest {
 
         try {
             // Mock Table using CreateTableQuery
+            BlocksStorage.getInstance().reset();
+
             String createSql = "CREATE TABLE users (id INT, name STRING(20))";
             CreateTableQuery createQuery = new CreateTableQuery();
             createQuery.parse(createSql);
-            Table table = new Table();
+            table.SchemaManager schemaManager = new table.SchemaManager(storage);
             
-            // Re-using the singleton but manually clearing it for predictable results
-            BlocksStorage.getInstance().clearCache();
-            new File("data.bin").delete();
-            
-            createQuery.run(table);
+            createQuery.run(schemaManager);
+            Table table = schemaManager.loadSchemas().stream()
+                    .filter(p -> p.getName().equals("users"))
+                    .findAny()
+                    .orElseThrow(() -> new IllegalArgumentException("Table 'users' does not exist"));
 
             InsertQuery query = new InsertQuery();
             query.parse("INSERT INTO users VALUES (1, 'Test User')");

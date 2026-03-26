@@ -24,12 +24,20 @@ class CreateTableQueryTest {
 
     @Test
     void run_populatesTable() throws IOException {
+        storage.BlocksStorage.getInstance().reset();
+
         CreateTableQuery query = new CreateTableQuery();
         query.parse("CREATE TABLE products (pid INT, price FLOAT, PRIMARY KEY(pid))");
 
-        Table table = new Table();
-        query.run(table);
+        table.SchemaManager schemaManager = new table.SchemaManager(storage.BlocksStorage.getInstance());
+        query.run(schemaManager);
+        
+        Table table = schemaManager.loadSchemas().stream()
+                .filter(p -> p.getName().equals("products"))
+                .findAny()
+                .orElseThrow(() -> new IllegalArgumentException("Table 'products' does not exist"));
 
+        Assertions.assertNotNull(table);
         Assertions.assertEquals(2, table.getColumn().size());
         Assertions.assertEquals(DataType.INT, table.getColumn().get("pid"));
         Assertions.assertEquals(4, table.getColumnSizes().get("pid"));

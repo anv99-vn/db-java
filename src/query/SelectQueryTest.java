@@ -3,32 +3,26 @@ package query;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import storage.BlocksStorage;
+import table.SchemaManager;
 import table.Table;
 
-import java.io.File;
 import java.io.IOException;
 import java.util.List;
 
 class SelectQueryTest {
 
     private Table setupTestTable() throws IOException {
-        File dbFile = new File("data.bin");
-        // On Windows, if file is open, delete might fail. 
-        // We try to close it if possible, but BlocksStorage singleton doesn't make it easy to re-open.
-        // For testing purposes, we assume we can at least clear the file content or handle misses.
-        if (dbFile.exists()) {
-            dbFile.delete();
-        }
-        
-        // Reset/Clear cache
-        BlocksStorage.getInstance().clearCache();
+        BlocksStorage.getInstance().reset();
 
-        Table table = new Table();
-        // CreateTableQuery.run will handle addColumn calls
+        SchemaManager schemaManager = new SchemaManager(BlocksStorage.getInstance());
         CreateTableQuery createTable = new CreateTableQuery();
-        createTable.tableName = "users";
         createTable.parse("CREATE TABLE users (id INT, name STRING, score FLOAT)");
-        createTable.run(table);
+        createTable.run(schemaManager);
+        
+        Table table = schemaManager.loadSchemas().stream()
+                .filter(p -> p.getName().equals("users"))
+                .findAny()
+                .orElseThrow(() -> new IllegalArgumentException("Table 'users' does not exist"));
 
         insert(table, "1, 'Alice', 95.5");
         insert(table, "2, 'Bob', 88.0");
@@ -194,14 +188,17 @@ class SelectQueryTest {
 
     @Test
     void run_emptyTable() throws IOException {
-        File dbFile = new File("data.bin");
-        if (dbFile.exists()) dbFile.delete();
-        BlocksStorage.getInstance().clearCache();
+        BlocksStorage.getInstance().reset();
 
-        Table table = new Table();
+        SchemaManager schemaManager = new SchemaManager(BlocksStorage.getInstance());
         CreateTableQuery createTable = new CreateTableQuery();
         createTable.parse("CREATE TABLE empty (id INT)");
-        createTable.run(table);
+        createTable.run(schemaManager);
+        
+        Table table = schemaManager.loadSchemas().stream()
+                .filter(p -> p.getName().equals("empty"))
+                .findAny()
+                .orElseThrow(() -> new IllegalArgumentException("Table 'empty' does not exist"));
 
         SelectQuery select = new SelectQuery();
         select.parse("SELECT * FROM empty");
