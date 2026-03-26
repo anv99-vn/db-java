@@ -90,6 +90,9 @@ public class InsertQuery implements Query {
         byte[] recordData = new byte[recordBuffer.remaining()];
         recordBuffer.get(recordData);
 
+        // PRIMARY KEY uniqueness check
+        checkPrimaryKeyUniqueness(table, column);
+
         int lastBlockId = table.getLastBlock();
         BlocksStorage blocksStorage = BlocksStorage.getInstance();
         AtomicInteger insertedPos = new AtomicInteger(-1);
@@ -169,6 +172,34 @@ public class InsertQuery implements Query {
             }
         } catch (IOException | NumberFormatException e) {
             System.err.println("Error updating index for " + index.getColumnName() + ": " + e.getMessage());
+        }
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void checkPrimaryKeyUniqueness(Table table, LinkedHashMap<String, DataType> column) throws IOException {
+        PrimaryKey pk = table.getPrimaryKey();
+        if (pk == null) return;
+
+        Index pkIndex = table.getIndexes().get(pk.getName());
+        if (pkIndex == null) return;
+
+        // Find the PK value from insertParams
+        int pkIdx = new ArrayList<>(column.keySet()).indexOf(pk.getName());
+        if (pkIdx == -1) return;
+
+        String pkValueStr = insertParams.get(pkIdx);
+        BTreeDisk tree = pkIndex.getBTree();
+        BKey keyToCheck;
+        switch (pk.getType()) {
+            case INT -> keyToCheck = new BKey<>(Integer.parseInt(pkValueStr));
+            case FLOAT -> keyToCheck = new BKey<>(Float.parseFloat(pkValueStr));
+            case STRING -> keyToCheck = new BKey<>(pkValueStr);
+            default -> throw new IllegalArgumentException("Unsupported PK type: " + pk.getType());
+        }
+
+        if (tree.search(keyToCheck) != null) {
+            throw new table.SQLException("PRIMARY KEY constraint violated: duplicate key '" + pkValueStr
+                    + "' in column '" + pk.getName() + "'");
         }
     }
 }

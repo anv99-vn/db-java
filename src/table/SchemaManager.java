@@ -76,6 +76,18 @@ public class SchemaManager {
                 buffer.put(colNameBytes);
                 buffer.putInt(index.getMetadataBlockId());
             }
+
+            // Primary Key (0 = none, 1 = has PK)
+            PrimaryKey pk = table.getPrimaryKey();
+            if (pk != null) {
+                buffer.putInt(1);
+                byte[] pkNameBytes = pk.getName().getBytes(StandardCharsets.UTF_8);
+                buffer.putInt(pkNameBytes.length);
+                buffer.put(pkNameBytes);
+                buffer.putInt(pk.getType().getId());
+            } else {
+                buffer.putInt(0);
+            }
         }
 
         // Tạo block để ghi
@@ -144,6 +156,17 @@ public class SchemaManager {
                 String colName = new String(colNameBytes, StandardCharsets.UTF_8);
                 int metaBlockId = buffer.getInt();
                 table.addIndex(colName, metaBlockId);
+            }
+
+            // Primary Key
+            int hasPk = buffer.getInt();
+            if (hasPk == 1) {
+                int pkNameLen = buffer.getInt();
+                byte[] pkNameBytes = new byte[pkNameLen];
+                buffer.get(pkNameBytes);
+                String pkName = new String(pkNameBytes, StandardCharsets.UTF_8);
+                int pkTypeId = buffer.getInt();
+                table.setPrimaryKey(new PrimaryKey(pkName, DataType.fromId(pkTypeId)));
             }
 
             // Add to list

@@ -105,9 +105,13 @@ public class CreateTableQuery implements Query {
                 throw new IllegalArgumentException("Primary key column " + primaryKeyColumn + " not defined");
             }
             table.setPrimaryKey(new PrimaryKey(primaryKeyColumn, pkType));
+
+            // Allocate a dedicated metadata block for the PK B-Tree index
+            int pkIndexMetaBlockId = storage.BlocksStorage.getInstance().allocateAndWrite(new Block());
+            table.addIndex(primaryKeyColumn, pkIndexMetaBlockId);
         }
 
-        // Allocate initial block
+        // Allocate initial data block
         Block initialBlock = new Block();
         int blockId = storage.BlocksStorage.getInstance().allocateAndWrite(initialBlock);
         table.setLastBlock(blockId);

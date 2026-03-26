@@ -49,7 +49,8 @@ public class BlocksStorage {
     public BlocksStorage(String dataPath, int cacheCapacity) throws IOException {
         this.dataFile = new RandomAccessFile(dataPath, "rw");
         this.fileChannel = dataFile.getChannel();
-        this.currentFileSize.set(fileChannel.size());
+        // Reserve Block 0 for Schema by ensuring we start allocating from Block 1.
+        this.currentFileSize.set(Math.max(fileChannel.size(), BLOCK_SIZE));
 
         for (int i = 0; i < STRIPE_COUNT; i++) {
             this.blockLocks[i] = new ReentrantReadWriteLock();
@@ -202,7 +203,9 @@ public class BlocksStorage {
         try {
             blockCache.clear();
             fileChannel.truncate(0);
-            currentFileSize.set(0);
+            // Reserve Block 0 for Schema by setting initial size to BLOCK_SIZE
+            // This ensures allocateAndWrite starts from Block 1.
+            currentFileSize.set(BLOCK_SIZE);
         } finally {
             fileLock.writeLock().unlock();
         }
