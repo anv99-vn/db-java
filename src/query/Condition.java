@@ -21,14 +21,14 @@ public class Condition {
         this.whereOperator = tokens.get(1);
         
         if (this.whereOperator.equalsIgnoreCase("BETWEEN")) {
-            this.whereValue = tokens.get(2);
+            this.whereValue = removeQuotes(tokens.get(2));
             if (tokens.size() < 5 || !tokens.get(3).equalsIgnoreCase("AND")) {
                 throw new IllegalArgumentException("Invalid BETWEEN syntax");
             }
-            this.whereValue2 = tokens.get(4);
+            this.whereValue2 = removeQuotes(tokens.get(4));
         } else {
             // Check for multi-char operators like <=, >=, !=
-            this.whereValue = tokens.get(2);
+            this.whereValue = removeQuotes(tokens.get(2));
         }
     }
 
@@ -86,5 +86,17 @@ public class Condition {
 
     public String getColumnName() {
         return whereColumn;
+    }
+
+    public String getOperator() {
+        return whereOperator;
+    }
+
+    public String getValue() {
+        return whereValue;
+    }
+
+    public String getValue2() {
+        return whereValue2;
     }
 }

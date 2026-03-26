@@ -2,8 +2,7 @@ package query;
 
 import storage.Block;
 import storage.BlocksStorage;
-import table.DataType;
-import table.Table;
+import table.*;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -71,13 +70,28 @@ public class SelectQuery implements Query {
     @Override
     public void run(Table table) throws IOException {
         results.clear();
-        //Full-scan
         LinkedHashMap<String, DataType> schema = table.getColumn();
-        BlocksStorage blocksStorage = BlocksStorage.getInstance();
-
         List<String> schemaKeys = new ArrayList<>(schema.keySet());
+        
+        // Try to use index optimization
+        if (condition != null) {
+            String col = condition.getColumnName();
+            String op = condition.getOperator();
+            if (op.equals("=") && table.getIndexes().containsKey(col)) {
+                handleIndexSearch(table, table.getIndexes().get(col), condition.getValue());
+                return;
+            }
+        }
+
+        // Full-scan if no index optimization found
+        fullScan(table, schema, schemaKeys);
+    }
+
+    private void fullScan(Table table, LinkedHashMap<String, DataType> schema, List<String> schemaKeys) throws IOException {
+        BlocksStorage blocksStorage = BlocksStorage.getInstance();
         int whereColIndex = -1;
         DataType whereColType = null;
+
         if (condition != null) {
             whereColIndex = schemaKeys.indexOf(condition.getColumnName());
             if (whereColIndex == -1) {
@@ -104,20 +118,7 @@ public class SelectQuery implements Query {
             int currentPos = Block.HEADER_TOTAL_SIZE; // Start after the full header (size + next + checksum)
             while (currentPos < Block.HEADER_TOTAL_SIZE + blockSize) {
                 buffer.position(currentPos);
-                List<Object> record = new ArrayList<>();
-                for (Map.Entry<String, DataType> entry : schema.entrySet()) {
-                    DataType type = entry.getValue();
-                    switch (type) {
-                        case INT -> record.add(buffer.getInt());
-                        case FLOAT -> record.add(buffer.getFloat());
-                        case STRING -> {
-                            int size = table.getColumnSizes().get(entry.getKey());
-                            byte[] bytes = new byte[size];
-                            buffer.get(bytes);
-                            record.add(new String(bytes).trim());
-                        }
-                    }
-                }
+                List<Object> record = parseSingleRecord(table, buffer, schema);
                 
                 if (condition == null || condition.evaluate(record, whereColIndex, whereColType)) {
                     results.add(record);
@@ -127,6 +128,56 @@ public class SelectQuery implements Query {
             }
             blockId = nextBlockId[0];
         }
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void handleIndexSearch(Table table, Index index, String valueStr) throws IOException {
+        BTreeDisk tree = index.getBTree();
+        BKey searchKey;
+        switch (index.getType()) {
+            case INT -> searchKey = new BKey<>(Integer.parseInt(valueStr));
+            case FLOAT -> searchKey = new BKey<>(Float.parseFloat(valueStr));
+            case STRING -> searchKey = new BKey<>(valueStr);
+            default -> throw new IllegalStateException();
+        }
+
+        BKey<?> found = tree.search(searchKey);
+        if (found == null) return;
+
+        BlocksStorage storage = BlocksStorage.getInstance();
+        LinkedHashMap<String, DataType> schema = table.getColumn();
+
+        for (long pointer : found.getRecordPointers()) {
+            int blockId = (int) (pointer >> 32);
+            int offset = (int) (pointer & 0xFFFFFFFFL);
+
+            Block block = storage.getBlock(blockId, null);
+            if (block == null) continue;
+
+            ByteBuffer buf = ByteBuffer.wrap(block.bytes);
+            buf.position(offset);
+            
+            List<Object> record = parseSingleRecord(table, buf, schema);
+            results.add(record);
+        }
+    }
+
+    private List<Object> parseSingleRecord(Table table, ByteBuffer buffer, Map<String, DataType> schema) {
+        List<Object> record = new ArrayList<>();
+        for (Map.Entry<String, DataType> entry : schema.entrySet()) {
+            DataType type = entry.getValue();
+            switch (type) {
+                case INT -> record.add(buffer.getInt());
+                case FLOAT -> record.add(buffer.getFloat());
+                case STRING -> {
+                    int size = table.getColumnSizes().get(entry.getKey());
+                    byte[] bytes = new byte[size];
+                    buffer.get(bytes);
+                    record.add(new String(bytes).trim());
+                }
+            }
+        }
+        return record;
     }
 
     // Condition logic moved to Condition.java
