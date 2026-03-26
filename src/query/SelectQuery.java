@@ -23,44 +23,47 @@ public class SelectQuery implements Query {
 
     @Override
     public void parse(String query) {
-        String trimmedQuery = query.trim();
-        if (!trimmedQuery.toUpperCase().startsWith("SELECT")) {
+        SqlTokenizer tokenizer = new SqlTokenizer(query);
+        List<String> tokens = tokenizer.tokenize();
+
+        if (tokens.isEmpty() || !tokens.get(0).equalsIgnoreCase("SELECT")) {
             throw new IllegalArgumentException("Invalid query syntax: must start with SELECT");
         }
 
-        int fromIndex = trimmedQuery.toUpperCase().indexOf("FROM");
-        if (fromIndex == -1) {
-            throw new IllegalArgumentException("Invalid query syntax: missing FROM clause");
-        }
-
-        String selectPart = trimmedQuery.substring(6, fromIndex).trim();
-        if (selectPart.equals("*")) {
+        int i = 1;
+        if (tokens.get(i).equals("*")) {
             selectAll = true;
+            i++;
         } else {
-            String[] colParts = selectPart.split(",");
-            for (String col : colParts) {
-                columns.add(col.trim());
+            while (i < tokens.size() && !tokens.get(i).equalsIgnoreCase("FROM")) {
+                if (!tokens.get(i).equals(",")) {
+                    columns.add(tokens.get(i));
+                }
+                i++;
             }
         }
 
-        String restPart = trimmedQuery.substring(fromIndex + 4).trim();
-        int whereIndex = restPart.toUpperCase().indexOf("WHERE");
-        
-        String fromPart;
-        if (whereIndex != -1) {
-            fromPart = restPart.substring(0, whereIndex).trim();
-            String whereClause = restPart.substring(whereIndex + 5).trim();
-            this.condition = new Condition();
-            this.condition.parse(whereClause);
-        } else {
-            fromPart = restPart.trim();
+        if (i >= tokens.size() || !tokens.get(i).equalsIgnoreCase("FROM")) {
+            throw new IllegalArgumentException("Invalid query syntax: missing FROM clause");
         }
+        i++;
 
-        String[] fromParts = fromPart.split("\\s+");
-        if (fromParts.length == 0) {
+        if (i >= tokens.size()) {
             throw new IllegalArgumentException("Invalid query syntax: missing table name");
         }
-        this.tableName = fromParts[0];
+        this.tableName = tokens.get(i);
+        i++;
+
+        if (i < tokens.size() && tokens.get(i).equalsIgnoreCase("WHERE")) {
+            i++;
+            StringBuilder whereClause = new StringBuilder();
+            while (i < tokens.size()) {
+                whereClause.append(tokens.get(i)).append(" ");
+                i++;
+            }
+            this.condition = new Condition();
+            this.condition.parse(whereClause.toString().trim());
+        }
     }
 
     // Parsing logic moved to Condition.java

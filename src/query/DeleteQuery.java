@@ -21,25 +21,25 @@ public class DeleteQuery implements Query {
 
     @Override
     public void parse(String query) {
-        String trimmedQuery = query.trim();
-        if (!trimmedQuery.toUpperCase().startsWith("DELETE FROM")) {
+        SqlTokenizer tokenizer = new SqlTokenizer(query);
+        List<String> tokens = tokenizer.tokenize();
+
+        if (tokens.size() < 3 || !tokens.get(0).equalsIgnoreCase("DELETE") || !tokens.get(1).equalsIgnoreCase("FROM")) {
             throw new IllegalArgumentException("Invalid query syntax: must start with DELETE FROM");
         }
 
-        String rest = trimmedQuery.substring(11).trim();
-        int whereIndex = rest.toUpperCase().indexOf("WHERE");
+        this.tableName = tokens.get(2);
 
-        if (whereIndex != -1) {
-            this.tableName = rest.substring(0, whereIndex).trim();
-            String whereClause = rest.substring(whereIndex + 5).trim();
+        int i = 3;
+        if (i < tokens.size() && tokens.get(i).equalsIgnoreCase("WHERE")) {
+            i++;
+            StringBuilder whereClause = new StringBuilder();
+            while (i < tokens.size()) {
+                whereClause.append(tokens.get(i)).append(" ");
+                i++;
+            }
             this.condition = new Condition();
-            this.condition.parse(whereClause);
-        } else {
-            this.tableName = rest;
-        }
-
-        if (this.tableName.isEmpty()) {
-            throw new IllegalArgumentException("Invalid query syntax: missing table name");
+            this.condition.parse(whereClause.toString().trim());
         }
     }
 

@@ -18,36 +18,45 @@ public class UpdateQuery implements Query {
 
     @Override
     public void parse(String query) {
-        String trimmedQuery = query.trim();
-        if (!trimmedQuery.toUpperCase().startsWith("UPDATE")) {
+        SqlTokenizer tokenizer = new SqlTokenizer(query);
+        List<String> tokens = tokenizer.tokenize();
+
+        if (tokens.isEmpty() || !tokens.get(0).equalsIgnoreCase("UPDATE")) {
             throw new IllegalArgumentException("Invalid query syntax: must start with UPDATE");
         }
 
-        int setIndex = trimmedQuery.toUpperCase().indexOf("SET");
-        if (setIndex == -1) {
+        this.tableName = tokens.get(1);
+
+        int i = 2;
+        if (i >= tokens.size() || !tokens.get(i).equalsIgnoreCase("SET")) {
             throw new IllegalArgumentException("Invalid query syntax: missing SET clause");
         }
+        i++;
 
-        this.tableName = trimmedQuery.substring(6, setIndex).trim();
-
-        int whereIndex = trimmedQuery.toUpperCase().indexOf("WHERE");
-        String setPart;
-        if (whereIndex != -1) {
-            setPart = trimmedQuery.substring(setIndex + 3, whereIndex).trim();
-            String whereClause = trimmedQuery.substring(whereIndex + 5).trim();
-            this.condition = new Condition();
-            this.condition.parse(whereClause);
-        } else {
-            setPart = trimmedQuery.substring(setIndex + 3).trim();
+        while (i < tokens.size() && !tokens.get(i).equalsIgnoreCase("WHERE")) {
+            String colName = tokens.get(i);
+            i++;
+            if (!tokens.get(i).equals("=")) {
+                throw new IllegalArgumentException("Invalid SET assignment: expected =");
+            }
+            i++;
+            String value = tokens.get(i);
+            setAssignments.put(colName, value);
+            i++;
+            if (i < tokens.size() && tokens.get(i).equals(",")) {
+                i++;
+            }
         }
 
-        String[] assignments = setPart.split(",");
-        for (String assignment : assignments) {
-            String[] parts = assignment.split("=");
-            if (parts.length != 2) {
-                throw new IllegalArgumentException("Invalid SET assignment: " + assignment);
+        if (i < tokens.size() && tokens.get(i).equalsIgnoreCase("WHERE")) {
+            i++;
+            StringBuilder whereClause = new StringBuilder();
+            while (i < tokens.size()) {
+                whereClause.append(tokens.get(i)).append(" ");
+                i++;
             }
-            setAssignments.put(parts[0].trim(), Condition.removeQuotes(parts[1].trim()));
+            this.condition = new Condition();
+            this.condition.parse(whereClause.toString().trim());
         }
     }
 

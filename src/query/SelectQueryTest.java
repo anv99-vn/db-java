@@ -3,7 +3,6 @@ package query;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import storage.BlocksStorage;
-import table.DataType;
 import table.Table;
 
 import java.io.File;

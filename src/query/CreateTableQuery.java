@@ -8,6 +8,7 @@ import table.Table;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public class CreateTableQuery implements Query {
@@ -18,52 +19,59 @@ public class CreateTableQuery implements Query {
 
     @Override
     public void parse(String query) {
-        String trimmedQuery = query.trim();
-        if (!trimmedQuery.toUpperCase().startsWith("CREATE TABLE")) {
+        SqlTokenizer tokenizer = new SqlTokenizer(query);
+        List<String> tokens = tokenizer.tokenize();
+
+        if (tokens.size() < 3 || !tokens.get(0).equalsIgnoreCase("CREATE") || !tokens.get(1).equalsIgnoreCase("TABLE")) {
             throw new IllegalArgumentException("Invalid query syntax: must start with CREATE TABLE");
         }
 
-        // Extract table name
-        int openParenIndex = trimmedQuery.indexOf("(");
-        if (openParenIndex == -1) {
-            throw new IllegalArgumentException("Invalid query syntax: missing column definitions");
+        this.tableName = tokens.get(2);
+
+        int i = 3;
+        if (!tokens.get(i).equals("(")) {
+            throw new IllegalArgumentException("Invalid query syntax: missing (");
         }
+        i++;
 
-        String prefix = trimmedQuery.substring(0, openParenIndex).trim();
-        String[] parts = prefix.split("\\s+");
-        if (parts.length < 3) {
-            throw new IllegalArgumentException("Invalid query syntax: missing table name");
-        }
-        this.tableName = parts[2];
-
-        // Extract columns definition
-        String innerContent = trimmedQuery.substring(openParenIndex + 1, trimmedQuery.lastIndexOf(")")).trim();
-        String[] definitions = innerContent.split(",");
-
-        for (String def : definitions) {
-            def = def.trim();
-            if (def.toUpperCase().startsWith("PRIMARY KEY")) {
-                int keyStart = def.indexOf("(") + 1;
-                int keyEnd = def.indexOf(")");
-                this.primaryKeyColumn = def.substring(keyStart, keyEnd).trim();
-            } else {
-                String[] colParts = def.split("\\s+");
-                if (colParts.length < 2) {
-                    throw new IllegalArgumentException("Invalid column definition: " + def);
+        while (i < tokens.size() && !tokens.get(i).equals(")")) {
+            String token = tokens.get(i);
+            
+            if (token.equalsIgnoreCase("PRIMARY")) {
+                i++; // Skip PRIMARY
+                if (tokens.get(i).equalsIgnoreCase("KEY")) {
+                    i++; // Skip KEY
+                    if (tokens.get(i).equals("(")) {
+                        i++; // Skip (
+                        this.primaryKeyColumn = tokens.get(i);
+                        i++; // Skip column name
+                        if (!tokens.get(i).equals(")")) {
+                            throw new IllegalArgumentException("Invalid PRIMARY KEY syntax");
+                        }
+                        i++; // Skip )
+                    }
                 }
-                String colName = colParts[0];
-                String typePart = colParts[1].toUpperCase();
+            } else {
+                String colName = token;
+                i++;
+                String typePart = tokens.get(i).toUpperCase();
+                i++;
                 
                 DataType type;
-                int size = 4; // Default for INT/FLOAT
+                int size = 4;
 
-                if (typePart.startsWith("STRING")) {
+                if (typePart.equals("STRING")) {
                     type = DataType.STRING;
-                    if (typePart.contains("(") && typePart.contains(")")) {
-                        String sizeStr = typePart.substring(typePart.indexOf("(") + 1, typePart.indexOf(")"));
-                        size = Integer.parseInt(sizeStr);
+                    if (i < tokens.size() && tokens.get(i).equals("(")) {
+                        i++; // Skip (
+                        size = Integer.parseInt(tokens.get(i));
+                        i++; // Skip size
+                        if (!tokens.get(i).equals(")")) {
+                            throw new IllegalArgumentException("Invalid STRING size syntax");
+                        }
+                        i++; // Skip )
                     } else {
-                        size = 30; // Default size
+                        size = 30;
                     }
                 } else {
                     try {
@@ -75,10 +83,10 @@ public class CreateTableQuery implements Query {
                 columns.put(colName, type);
                 columnSizes.put(colName, size);
             }
-        }
-
-        if (primaryKeyColumn == null) {
-            // Optional: throw error if PK is required
+            
+            if (i < tokens.size() && tokens.get(i).equals(",")) {
+                i++;
+            }
         }
     }
 

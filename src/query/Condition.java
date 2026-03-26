@@ -10,31 +10,26 @@ public class Condition {
     private String whereValue2;
 
     public void parse(String whereClause) {
-        if (whereClause.toUpperCase().contains(" BETWEEN ")) {
-            String[] parts = whereClause.split("(?i)\\s+BETWEEN\\s+");
-            if (parts.length == 2) {
-                this.whereColumn = parts[0].trim();
-                this.whereOperator = "BETWEEN";
-                String[] values = parts[1].split("(?i)\\s+AND\\s+");
-                if (values.length == 2) {
-                    this.whereValue = removeQuotes(values[0].trim());
-                    this.whereValue2 = removeQuotes(values[1].trim());
-                    return;
-                }
-            }
+        SqlTokenizer tokenizer = new SqlTokenizer(whereClause);
+        List<String> tokens = tokenizer.tokenize();
+
+        if (tokens.size() < 3) {
+            throw new IllegalArgumentException("Invalid WHERE clause: " + whereClause);
         }
 
-        String[] operators = {">=", "<=", "!=", "=", ">", "<"};
-        for (String op : operators) {
-            int opIndex = whereClause.indexOf(op);
-            if (opIndex != -1) {
-                this.whereColumn = whereClause.substring(0, opIndex).trim();
-                this.whereOperator = op;
-                this.whereValue = removeQuotes(whereClause.substring(opIndex + op.length()).trim());
-                return;
+        this.whereColumn = tokens.get(0);
+        this.whereOperator = tokens.get(1);
+        
+        if (this.whereOperator.equalsIgnoreCase("BETWEEN")) {
+            this.whereValue = tokens.get(2);
+            if (tokens.size() < 5 || !tokens.get(3).equalsIgnoreCase("AND")) {
+                throw new IllegalArgumentException("Invalid BETWEEN syntax");
             }
+            this.whereValue2 = tokens.get(4);
+        } else {
+            // Check for multi-char operators like <=, >=, !=
+            this.whereValue = tokens.get(2);
         }
-        throw new IllegalArgumentException("Invalid WHERE clause: " + whereClause);
     }
 
     public static String removeQuotes(String val) {

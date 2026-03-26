@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -22,45 +23,39 @@ public class InsertQuery implements Query {
 
     @Override
     public void parse(String query) {
-        String trimmedQuery = query.trim();
-        // Basic validation for INSERT syntax
-        if (!trimmedQuery.toUpperCase().startsWith("INSERT INTO")) {
+        SqlTokenizer tokenizer = new SqlTokenizer(query);
+        List<String> tokens = tokenizer.tokenize();
+        
+        if (tokens.size() < 4 || !tokens.get(0).equalsIgnoreCase("INSERT") || !tokens.get(1).equalsIgnoreCase("INTO")) {
             throw new IllegalArgumentException("Invalid query syntax: must start with INSERT INTO");
         }
 
-        // Locate VALUES keyword
-        int valuesIndex = trimmedQuery.toUpperCase().indexOf("VALUES");
+        this.tableName = tokens.get(2);
+        
+        int valuesIndex = -1;
+        for (int i = 3; i < tokens.size(); i++) {
+            if (tokens.get(i).equalsIgnoreCase("VALUES")) {
+                valuesIndex = i;
+                break;
+            }
+        }
+
         if (valuesIndex == -1) {
             throw new IllegalArgumentException("Invalid query syntax: missing VALUES clause");
         }
 
-        // Extract table name
-        String prefix = trimmedQuery.substring(0, valuesIndex).trim();
-        String[] prefixParts = prefix.split("\\s+");
-        if (prefixParts.length < 3) {
-            throw new IllegalArgumentException("Invalid query syntax: missing table name");
-        }
-        this.tableName = prefixParts[2];
-
-        // Extract values
-        String suffix = trimmedQuery.substring(valuesIndex + 6).trim();
-        if (!suffix.startsWith("(") || !suffix.endsWith(")")) {
-            throw new IllegalArgumentException("Invalid query syntax: VALUES must be enclosed in parentheses");
+        if (!tokens.get(valuesIndex + 1).equals("(")) {
+            throw new IllegalArgumentException("Invalid query syntax: VALUES must be followed by (");
         }
 
-        String valuesContent = suffix.substring(1, suffix.length() - 1);
         this.insertParams = new ArrayList<>();
-
-        // Split by comma and process values
-        // Note: This simple split doesn't handle commas inside quotes
-        String[] values = valuesContent.split(",");
-        for (String val : values) {
-            val = val.trim();
-            // Remove surrounding quotes for string literals
-            if ((val.startsWith("'") && val.endsWith("'")) || (val.startsWith("\"") && val.endsWith("\""))) {
-                val = val.substring(1, val.length() - 1);
+        int i = valuesIndex + 2;
+        while (i < tokens.size() && !tokens.get(i).equals(")")) {
+            String val = tokens.get(i);
+            if (!val.equals(",")) {
+                this.insertParams.add(val);
             }
-            this.insertParams.add(val);
+            i++;
         }
     }
 
