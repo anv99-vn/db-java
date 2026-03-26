@@ -1,6 +1,7 @@
 package table;
 
 import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Bậc t (minimum degree): mỗi node có tối thiểu t-1 keys, tối đa 2t-1 keys
@@ -87,6 +88,15 @@ public class BTree<T extends Comparable<T>> {
         if (root.n == 0) {
             root = root.isLeaf ? null : root.children[0];
         }
+    }
+
+    // Tìm các key trong khoảng [lower, upper]
+    public List<BKey<T>> findInRange(T lower, T upper) {
+        List<BKey<T>> result = new ArrayList<>();
+        if (root != null) {
+            root.findInRange(lower, upper, result);
+        }
+        return result;
     }
 
     // In cây dạng cây thư mục

@@ -15,6 +15,15 @@ public class Table {
     Map<String, Index> indexes = new LinkedHashMap<>();
     private int lastBlock = -1;
     private int firstBlock = -1;
+    private String name;
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getName() {
+        return name;
+    }
 
     public Map<String, Index> getIndexes() {
         return indexes;
@@ -62,7 +71,7 @@ public class Table {
         }
     }
 
-    private void setFirstBlock(int id) {
+    public void setFirstBlock(int id) {
         firstBlock = id;
     }
 

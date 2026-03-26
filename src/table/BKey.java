@@ -20,7 +20,7 @@ public class BKey<T extends Comparable<T>> implements Comparable<BKey<T>> {
         return key;
     }
 
-    public java.util.List<Long> getRecordPointers() {
+    public List<Long> getRecordPointers() {
         return recordPointers;
     }
 

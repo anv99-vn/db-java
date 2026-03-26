@@ -73,7 +73,7 @@ class BTreeTest {
         // Degree 2 means max 3 keys per node. 
         // Inserting 10 keys will force multiple splits.
         for (int i = 1; i <= 10; i++) {
-            tree.insert(new BKey<>(i), (long) i);
+            tree.insert(new BKey<>(i), i);
         }
 
         for (int i = 1; i <= 10; i++) {
@@ -206,5 +206,75 @@ class BTreeTest {
         result = tree.search(new BKey<>(targetKey));
         Assertions.assertEquals(numPointers - 2, result.getRecordPointers().size());
         Assertions.assertFalse(result.getRecordPointers().contains(0L));
+    }
+
+    @Test
+    void testFindInRangeBasic() {
+        BTree<Integer> tree = new BTree<>(2);
+        for (int i = 1; i <= 10; i++) {
+            tree.insert(new BKey<>(i), i);
+        }
+
+        // Search range [3, 7]
+        List<BKey<Integer>> result = tree.findInRange(3, 7);
+        tree.print();
+        Assertions.assertEquals(5, result.size());
+        Assertions.assertEquals(3, result.get(0).getKey());
+        Assertions.assertEquals(7, result.get(4).getKey());
+    }
+
+    @Test
+    void testFindInRangeEmpty() {
+        BTree<Integer> tree = new BTree<>(2);
+        tree.insert(new BKey<>(10), 100L);
+        tree.insert(new BKey<>(20), 200L);
+
+        // Range [1, 5] - no results
+        List<BKey<Integer>> result = tree.findInRange(1, 5);
+        Assertions.assertTrue(result.isEmpty());
+
+        // Range [25, 30] - no results
+        result = tree.findInRange(25, 30);
+        Assertions.assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testFindInRangeSinglePoint() {
+        BTree<Integer> tree = new BTree<>(2);
+        tree.insert(new BKey<>(10), 100L);
+        tree.insert(new BKey<>(20), 200L);
+
+        // Range [10, 10]
+        List<BKey<Integer>> result = tree.findInRange(10, 10);
+        Assertions.assertEquals(1, result.size());
+        Assertions.assertEquals(10, result.get(0).getKey());
+    }
+
+    @Test
+    void testFindInRangeAll() {
+        BTree<Integer> tree = new BTree<>(2);
+        for (int i = 1; i <= 5; i++) {
+            tree.insert(new BKey<>(i), (long) i);
+        }
+
+        // Range [0, 10]
+        List<BKey<Integer>> result = tree.findInRange(0, 10);
+        Assertions.assertEquals(5, result.size());
+    }
+
+    @Test
+    void testFindInRangeLargeTree() {
+        BTree<Integer> tree = new BTree<>(3);
+        int numKeys = 100;
+        for (int i = 0; i < numKeys; i++) {
+            tree.insert(new BKey<>(i), (long) i);
+        }
+
+        // Range [20, 80]
+        List<BKey<Integer>> result = tree.findInRange(20, 80);
+        Assertions.assertEquals(61, result.size());
+        for (int i = 0; i < result.size(); i++) {
+            Assertions.assertEquals(20 + i, result.get(i).getKey());
+        }
     }
 }

@@ -1,6 +1,7 @@
 package storage;
 
 import java.nio.ByteBuffer;
+import java.util.zip.CRC32;
 
 public class Block {
     private int size;
@@ -69,7 +70,7 @@ public class Block {
     }
 
     private int computeChecksum(byte[] bytes, int size) {
-        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        CRC32 crc = new CRC32();
         if (size > 0) {
             crc.update(bytes, HEADER_TOTAL_SIZE, size);
         }

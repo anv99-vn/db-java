@@ -239,6 +239,36 @@ class BTreeNode<T extends Comparable<T>> {
         n--;
     }
 
+    // Tìm các key trong khoảng [lower, upper]
+    void findInRange(T lower, T upper, List<BKey<T>> result) {
+        int i = 0;
+        // Bỏ qua các key nhỏ hơn lower
+        while (i < n && keys[i].key.compareTo(lower) < 0) {
+            i++;
+        }
+
+        // Nếu không phải lá, tìm trong con trỏ con tương ứng với các key < lower
+        // (Nhưng thực tế, children[i] có thể chứa các key >= lower)
+        
+        // Duyệt qua các key có khả năng nằm trong dải
+        while (i < n && keys[i].key.compareTo(upper) <= 0) {
+            // Nếu không phải lá, duyệt cây con bên trái của key hiện tại
+            if (!isLeaf) {
+                children[i].findInRange(lower, upper, result);
+            }
+
+            // Thêm key hiện tại vào kết quả nếu nó >= lower
+            // (Đã đảm bảo <= upper ở điều kiện while)
+            result.add(keys[i]);
+            i++;
+        }
+
+        // Duyệt cây con cuối cùng (bên phải của key cuối cùng đã xét)
+        if (!isLeaf) {
+            children[i].findInRange(lower, upper, result);
+        }
+    }
+
     // In node theo dạng level-order (dùng cho traverse)
     void print(String indent, boolean isLast) {
         System.out.print(indent);
