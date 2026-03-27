@@ -8,7 +8,7 @@
 - **Disk-Based Storage:** Dữ liệu được lưu trữ trực tiếp xuống file dưới dạng các khối (Blocks), cho phép duy trì dữ liệu ngay cả khi khởi động lại hệ thống.
 - **B-Tree Indexing:** Sử dụng cấu trúc cây B-Tree (phiên bản trên đĩa) để tăng tốc độ tìm kiếm và tối ưu hóa hiệu năng truy vấn cho các bảng có lượng dữ liệu lớn.
 - **Custom SQL Tokenizer:** Bộ phân tích từ vựng (tokenizer) tự xây dựng giúp xử lý linh hoạt các câu lệnh SQL phức tạp, bao gồm cả chuỗi ký tự chứa dấu phẩy or khoảng trắng.
-- **Hỗ trợ kiểu dữ liệu:** `INTEGER`, `FLOAT`, `STRING(size)`.
+- **Hỗ trợ kiểu dữ liệu:** `INT`, `FLOAT`, `STRING(size)`.
 
 ## 🏗️ Kiến trúc dự án
 
@@ -35,7 +35,7 @@ Sau khi chạy `Main.java`, bạn có thể nhập các truy vấn sau:
 
 ```sql
 -- Tạo bảng mới
-CREATE TABLE students (id INTEGER, name STRING(50), grade FLOAT, PRIMARY KEY (id))
+CREATE TABLE students (id INT, name STRING(50), grade FLOAT, PRIMARY KEY (id))
 
 -- Xem danh sách các bảng
 SHOW TABLES
@@ -45,7 +45,7 @@ INSERT INTO students VALUES (1, 'Nguyen Van A', 8.5)
 INSERT INTO students VALUES (2, 'Tran Thi B', 9.0)
 
 -- Tạo index cho một cột để tìm kiếm nhanh hơn
-CREATE INDEX name ON students
+CREATE INDEX name ON students (id)
 
 -- Truy vấn dữ liệu
 SELECT * FROM students WHERE grade > 8.0

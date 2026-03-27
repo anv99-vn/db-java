@@ -30,22 +30,31 @@ public class CreateIndexQuery implements DatabaseQuery {
         SqlTokenizer tokenizer = new SqlTokenizer(query);
         List<String> tokens = tokenizer.tokenize();
 
-        // Syntax: CREATE INDEX ON <table> ( <col1>, <col2>... )
-        if (tokens.size() < 6
-                || !tokens.get(0).equalsIgnoreCase("CREATE")
-                || !tokens.get(1).equalsIgnoreCase("INDEX")
-                || !tokens.get(2).equalsIgnoreCase("ON")) {
-            throw new IllegalArgumentException(
-                    "Invalid syntax. Expected: CREATE INDEX ON <table> (<col1>, <col2>)");
+        // Standard: CREATE INDEX [name] ON <table> ( <col1>, <col2>... )
+        if (tokens.size() < 4 || !tokens.get(0).equalsIgnoreCase("CREATE") || !tokens.get(1).equalsIgnoreCase("INDEX")) {
+            throw new IllegalArgumentException("Invalid syntax. Expected: CREATE INDEX [name] ON <table> (<col1>)");
         }
 
-        this.tableName = tokens.get(3);
+        int onIndex = -1;
+        for (int i = 2; i < tokens.size(); i++) {
+            if (tokens.get(i).equalsIgnoreCase("ON")) {
+                onIndex = i;
+                break;
+            }
+        }
 
-        if (!tokens.get(4).equals("(")) {
+        if (onIndex == -1 || onIndex + 2 >= tokens.size()) {
+            throw new IllegalArgumentException("Invalid syntax. Missing ON or table info.");
+        }
+
+        // Optional: index name could be at tokens.get(2) if onIndex == 3
+        this.tableName = tokens.get(onIndex + 1);
+
+        if (!tokens.get(onIndex + 2).equals("(")) {
             throw new IllegalArgumentException("Expected '(' after table name");
         }
-        
-        int i = 5;
+
+        int i = onIndex + 3;
         while (i < tokens.size() && !tokens.get(i).equals(")")) {
             String col = tokens.get(i);
             if (!col.equals(",")) {

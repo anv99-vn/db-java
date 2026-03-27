@@ -21,14 +21,7 @@ public class Main {
         Map<String, Table> tablesMap = new HashMap<>();
 
         // 1. Initial Load of Tables
-        try {
-            List<Table> loadedTables = schemaManager.loadSchemas();
-            for (Table t : loadedTables) {
-                tablesMap.put(t.getName(), t);
-            }
-        } catch (IOException e) {
-            System.err.println("Initial Load error: " + e.getMessage());
-        }
+        refreshTables(schemaManager, tablesMap);
 
         Scanner scanner = new Scanner(System.in);
         while (true) {
@@ -66,6 +59,7 @@ public class Main {
             DatabaseQuery ctq = new CreateTableQuery();
             ctq.parse(query);
             ctq.run(schemaManager);
+            refreshTables(schemaManager, tablesMap);
             System.out.println("Operation successful.");
             return;
         }
@@ -74,6 +68,7 @@ public class Main {
             DatabaseQuery dtq = new DropTableQuery();
             dtq.parse(query);
             dtq.run(schemaManager);
+            refreshTables(schemaManager, tablesMap);
             System.out.println("Operation successful.");
             return;
         }
@@ -145,5 +140,17 @@ public class Main {
             }
         }
         return null;
+    }
+
+    private static void refreshTables(SchemaManager schemaManager, Map<String, Table> tablesMap) {
+        try {
+            tablesMap.clear();
+            List<Table> loadedTables = schemaManager.loadSchemas();
+            for (Table t : loadedTables) {
+                tablesMap.put(t.getName(), t);
+            }
+        } catch (IOException e) {
+            System.err.println("Refresh tables error: " + e.getMessage());
+        }
     }
 }
