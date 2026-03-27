@@ -2,12 +2,12 @@ package table;
 
 import java.io.IOException;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
  * column(name, type)
  * primary key
- * arraylist<meta_data_record(block_id,offset)> records
  */
 public class Table {
     LinkedHashMap<String, DataType> column;
@@ -61,10 +61,6 @@ public class Table {
         this.primaryKey = primaryKey;
     }
 
-    public void init() {
-
-    }
-
     public void setLastBlock(int id) {
         lastBlock = id;
         if (firstBlock == -1) {
@@ -73,10 +69,10 @@ public class Table {
     }
 
     public void addIndex(String colName, int metadataBlockId) throws IOException {
-        addIndex(java.util.List.of(colName), metadataBlockId);
+        addIndex(List.of(colName), metadataBlockId);
     }
 
-    public void addIndex(java.util.List<String> colNames, int metadataBlockId) throws IOException {
+    public void addIndex(List<String> colNames, int metadataBlockId) throws IOException {
         DataType type;
         if (colNames.size() > 1) {
             type = DataType.COMPOSITE;
@@ -85,11 +81,8 @@ public class Table {
             if (type == null) throw new IllegalArgumentException("Column not found: " + colNames.get(0));
         }
         Index idx = new Index(colNames, metadataBlockId, type);
-        // Use first column name or a concatenated string as map key? 
-        // For now use the first one or we can change how indexes are stored.
-        // Actually, to find an index, we might need a better key. 
-        // Let's use the first column for now, but really we should allow multiple indexes.
-        indexes.put(colNames.get(0), idx);
+        String indexKey = String.join(",", colNames);
+        indexes.put(indexKey, idx);
     }
 
     public void setFirstBlock(int id) {

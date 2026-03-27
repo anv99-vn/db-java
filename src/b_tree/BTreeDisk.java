@@ -1,4 +1,4 @@
-package table;
+package b_tree;
 
 import storage.Block;
 import storage.BlocksStorage;

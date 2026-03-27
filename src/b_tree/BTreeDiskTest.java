@@ -1,4 +1,4 @@
-package table;
+package b_tree;
 
 import org.junit.jupiter.api.*;
 import storage.BlocksStorage;

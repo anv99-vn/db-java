@@ -6,7 +6,7 @@ import table.SchemaManager;
 import table.Table;
 import table.Index;
 import table.CompositeKey;
-import table.BTreeDisk;
+import b_tree.BTreeDisk;
 import java.io.IOException;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -90,7 +90,7 @@ class IndexDmlIntegrationTest {
         
         // Reload table to get fresh index metadata
         table = schemaManager.loadSchemas().stream().filter(t -> t.getName().equals("tests")).findFirst().get();
-        Index idx = table.getIndexes().get("id"); // composite keyed by first column
+        Index idx = table.getIndexes().get("id,name"); // composite keyed by all columns
         BTreeDisk btree = idx.getBTree();
 
         // 1. Insert

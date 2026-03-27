@@ -1,5 +1,7 @@
 package query;
 
+import b_tree.BKey;
+import b_tree.BTreeDisk;
 import storage.Block;
 import storage.BlocksStorage;
 import table.*;
@@ -72,13 +74,13 @@ public class CreateIndexQuery implements DatabaseQuery {
             }
         }
 
-        // Use first column as registration key, or some unique key
-        String firstCol = columnNames.get(0);
-
+        // Use concatenated columns as registration key
+        String indexKey = String.join(",", columnNames);
+        
         // Allocate a fresh block for B-Tree metadata
         int metaBlockId = BlocksStorage.getInstance().allocateAndWrite(new Block());
         table.addIndex(columnNames, metaBlockId);
-        Index index = table.getIndexes().get(firstCol);
+        Index index = table.getIndexes().get(indexKey);
         
         // Backfill existing data into index
         backfillIndex(table, index);

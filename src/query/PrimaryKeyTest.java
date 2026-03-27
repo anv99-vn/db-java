@@ -1,5 +1,7 @@
 package query;
 
+import b_tree.BKey;
+import b_tree.BTreeDisk;
 import org.junit.jupiter.api.*;
 import storage.BlocksStorage;
 import table.*;

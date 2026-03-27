@@ -1,4 +1,4 @@
-package table;
+package b_tree;
 
 import java.util.ArrayList;
 import java.util.List;
