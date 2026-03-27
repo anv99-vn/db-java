@@ -64,7 +64,7 @@ class IndexPersistenceTest {
         assertEquals(2, tableWithTwoIndexes.getIndexes().size(), "Should have 2 indexes after persistence");
         
         // Composite index check (keyed by first column 'id' in current implementation)
-        Index compositeIdx = tableWithTwoIndexes.getIndexes().get("id");
+        Index compositeIdx = tableWithTwoIndexes.getIndexes().get("id,email");
         assertNotNull(compositeIdx, "Composite index should be found");
         assertEquals(2, compositeIdx.getColumnNames().size());
         assertEquals("id", compositeIdx.getColumnNames().get(0));
